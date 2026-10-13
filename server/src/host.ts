@@ -56,9 +56,9 @@ import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Ctx } from "@hatch/space-sdk";
-import * as schema from "./schema";
-import { Actions } from "./actions";
-import { MIGRATIONS } from "./migrations-data";
+import * as schema from "./schema.js";
+import { Actions } from "./actions.js";
+import { MIGRATIONS } from "./migrations-data.js";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 

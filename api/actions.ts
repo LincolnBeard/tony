@@ -77,7 +77,14 @@ function errorResponse(e: unknown): Response {
 
 export async function POST(req: Request): Promise<Response> {
   try {
-    const { getDb, handleActionsRequest } = await import("../server/src/host");
+    // The ".js" extension is load-bearing, not a typo: Vercel compiles
+    // host.ts to server/src/host.js in the function output, and Node's
+    // ESM loader does NOT resolve extensionless specifiers — the
+    // extensionless form produced "Cannot find module
+    // '/var/task/server/src/host'" in production even though the file
+    // was bundled. TypeScript (bundler resolution) and Bun both map
+    // this ".js" specifier back to the host.ts source.
+    const { getDb, handleActionsRequest } = await import("../server/src/host.js");
     const { db } = await getDb();
     return await handleActionsRequest(req, db);
   } catch (e) {

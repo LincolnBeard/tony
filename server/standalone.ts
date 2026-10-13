@@ -51,7 +51,7 @@
 
 import { existsSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
-import { ROOT, getDb, handleActionsRequest } from "./src/host";
+import { ROOT, getDb, handleActionsRequest } from "./src/host.js";
 
 const CLIENT_DIST = join(ROOT, "client", "dist");
 const PORT = Number(process.env.PORT ?? 4173);
