@@ -1,0 +1,9 @@
+CREATE TABLE price_sources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT '',
+  coverage TEXT NOT NULL DEFAULT '',
+  caveat TEXT NOT NULL DEFAULT '',
+  trust_level TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0
+);

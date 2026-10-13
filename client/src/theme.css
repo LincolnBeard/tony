@@ -1,0 +1,467 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,900&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+@import "tailwindcss-safe-area";
+
+@theme {
+  --text-xs: 12px; --text-xs--line-height: 16px;
+  --text-sm: 14px; --text-sm--line-height: 20px;
+  --text-base: 16px; --text-base--line-height: 24px;
+  --text-lg: 18px; --text-lg--line-height: 28px;
+  --text-xl: 20px; --text-xl--line-height: 28px;
+  --text-2xl: 24px; --text-2xl--line-height: 32px;
+  --text-3xl: 30px; --text-3xl--line-height: 36px;
+  --text-4xl: 36px; --text-4xl--line-height: 40px;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+/* ——— VAPOR VAULT — tech / vaporwave / Pokémon ———
+   Two vapor themes over one token system. NIGHT VAPOR (dark, the :root
+   default): deep midnight-violet ground, hot pink #FF71CE + electric
+   cyan #01CDFE + lavender #B967FF + lemon #FFFB96 rationed to the town,
+   brand moments and chrome — data panels stay near-monochrome violet
+   charcoal. DAY VAPOR (light, html[data-ui-theme="light"]): pearl /
+   lavender-white ground, the same palette washed to pastels, deep
+   violet ink text. Green/red remain reserved ONLY for up/down + deal
+   states in both themes; vapor pink/cyan never sit where they'd read
+   as gain/loss. The resolved theme is set on <html data-ui-theme> by
+   the pre-paint script in index.html and kept live by the app
+   (always Auto: follows prefers-color-scheme incl. live OS changes;
+   there is no in-app Light/Dark override). The town's own day/night clock
+   keeps running as the world layer underneath — panels follow the UI
+   theme, never the town sky. */
+:root {
+  color-scheme: dark;
+  --bg: #160a30;
+  --bg-deep: #100622;
+  --surface: #20123f;
+  --surface-2: #271850;
+  --surface-alt: #2f1d5e;
+  --glass: rgba(235, 228, 255, 0.045);
+  --text: #f4f0ff;
+  --dim: #b6aad4;
+  --faint: #a08fc9;
+  --border: #3d2770;
+  --hairline: rgba(230, 220, 255, 0.10);
+  --accent: #ff71ce;
+  --accent-strong: #ff9ad5;
+  --accent-ink: #6fe3ff;
+  --accent-dim: rgba(255, 113, 206, 0.14);
+  --lavender: #b967ff;
+  --lemon: #fffb96;
+  --red: #ff5a48;
+  --sell: #ff6a4d;
+  --hold: #3fb68f;
+  --teal: #01cfe8;
+  --trim: #ffd94d;
+  --radius: 14px;
+  --panel-shadow: rgba(5, 2, 16, 0.55);
+  --slab-1: rgba(34, 19, 66, 0.95);
+  --slab-2: rgba(22, 10, 48, 0.93);
+  --slab-3: rgba(16, 6, 34, 0.95);
+  /* Zebra striping (Oct 9): odd rows sit ONE step darker than the panel
+     base in Night Vapor (a deep violet-black wash over the slab
+     gradient); hover/focus is a stronger pink step so it always reads
+     apart from the zebra shade. --slabz-* are the equivalent darker
+     slab stops for card-style lists (watchlist). */
+  --row-zebra: rgba(5, 1, 16, 0.42);
+  --row-hover: rgba(255, 113, 206, 0.14);
+  --slabz-1: rgba(24, 12, 48, 0.97);
+  --slabz-2: rgba(15, 6, 34, 0.96);
+  --slabz-3: rgba(10, 3, 24, 0.97);
+  --slab-t1: rgba(34, 19, 66, 0.86);
+  --slab-t2: rgba(22, 10, 48, 0.84);
+  --slab-t3: rgba(16, 6, 34, 0.86);
+  --sheet-bg: #1a0b36;
+  --bubble-bg: #2a1850;
+  --th-bg: #241447;
+  --space-surface: var(--surface);
+  --space-surface-alt: var(--surface-alt);
+  --space-muted: var(--dim);
+  --space-border: var(--border);
+  --space-accent: var(--accent);
+}
+html[data-ui-theme="light"] {
+  color-scheme: light;
+  --bg: #f4effc;
+  --bg-deep: #eae2f8;
+  --surface: #fdfcff;
+  --surface-2: #f4eefc;
+  --surface-alt: #ece3fa;
+  --glass: rgba(58, 28, 110, 0.045);
+  --text: #2a1650;
+  --dim: #5d4c86;
+  --faint: #6f5c96;
+  --border: #d9cdf3;
+  --hairline: rgba(42, 22, 80, 0.10);
+  --accent: #ff71ce;
+  --accent-strong: #d6247f;
+  --accent-ink: #a4136e;
+  --accent-dim: rgba(255, 113, 206, 0.16);
+  --lavender: #8b46d9;
+  --lemon: #b8860b;
+  --red: #c8402a;
+  --sell: #c23a1e;
+  --hold: #147a52;
+  --teal: #0e7c8c;
+  --trim: #96690a;
+  --panel-shadow: rgba(58, 28, 110, 0.16);
+  --slab-1: rgba(253, 252, 255, 0.96);
+  --slab-2: rgba(247, 242, 253, 0.94);
+  --slab-3: rgba(243, 238, 252, 0.96);
+  /* Zebra striping, Day Vapor: the same relative step as Night Vapor —
+     a subtle violet tint darker than the pearl base; text/chips keep
+     AA contrast on both row shades. Hover is a stronger magenta step. */
+  --row-zebra: rgba(58, 28, 110, 0.07);
+  --row-hover: rgba(214, 36, 127, 0.10);
+  --slabz-1: rgba(238, 230, 250, 0.97);
+  --slabz-2: rgba(230, 218, 246, 0.96);
+  --slabz-3: rgba(224, 210, 242, 0.97);
+  --slab-t1: rgba(253, 252, 255, 0.88);
+  --slab-t2: rgba(247, 242, 253, 0.86);
+  --slab-t3: rgba(243, 238, 252, 0.88);
+  --sheet-bg: #f8f4fe;
+  --bubble-bg: #ffffff;
+  --th-bg: #efe8fb;
+}
+body {
+  font-family: var(--font-sans);
+  /* The town IS the page background now — a bright pixel-grass field sits
+     behind everything (the fixed .town-bg layer draws paths, houses, trees
+     and the pond). Body fallback is the grass green so overscroll matches;
+     Day Vapor washes it to a pastel morning green. */
+  background: #5da24b;
+}
+html[data-ui-theme="light"] body { background: #a9d69b; }
+.font-display { font-family: var(--font-display); }
+.font-mono2 { font-family: var(--font-mono); }
+/* ——— WCAG 2.1 AA foundations ———
+   Visible focus everywhere: a 3px outline in the theme's text-accent
+   (electric cyan on Night Vapor, deep magenta on Day Vapor — both pass
+   3:1+ against panels and grounds) with an offset so it never merges
+   with the control's own border. Applied on :focus-visible so mouse
+   users aren't spammed while keyboard users always see position. */
+:focus-visible {
+  outline: 3px solid var(--accent-ink);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+/* Screen-reader-only (live regions, the h1, chart summaries) */
+.sr-only {
+  position: absolute !important; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* Vault panels float OVER the town: strong dark, semi-opaque surfaces with
+   backdrop blur so text, tables and charts stay crisp while the pixel town
+   shows in the margins, in the gaps between sections, and softly through
+   the panel edges. */
+.slab {
+  background: linear-gradient(180deg, var(--slab-1), var(--slab-2) 55%, var(--slab-3));
+  -webkit-backdrop-filter: blur(9px) saturate(1.1);
+  backdrop-filter: blur(9px) saturate(1.1);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 0 var(--hairline) inset, 0 18px 40px var(--panel-shadow);
+  border-radius: 18px;
+}
+/* Headings / intros that sit directly over the town get the same treatment */
+.town-readable {
+  background: linear-gradient(180deg, var(--slab-1), var(--slab-2));
+  -webkit-backdrop-filter: blur(9px) saturate(1.1);
+  backdrop-filter: blur(9px) saturate(1.1);
+  border: 1px solid var(--border);
+  box-shadow: 0 14px 34px var(--panel-shadow);
+  border-radius: 18px;
+}
+/* Wooden town signpost (replaces the old boxed hunting-ground strip) */
+.town-signpost {
+  background: linear-gradient(180deg, rgba(59,38,18,0.95), rgba(43,27,12,0.95));
+  border: 2px solid #241605;
+  box-shadow: 0 14px 34px rgba(6,20,6,0.5), 0 2px 0 rgba(255,220,150,0.25) inset;
+  border-radius: 14px;
+  color: #ffe9bd;
+}
+.slab-hover { transition: border-color .18s ease, transform .18s ease; }
+.slab-hover:hover { border-color: var(--accent-strong); }
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.16em; text-transform: uppercase;
+}
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+@keyframes scoutPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+.scout-dot { animation: scoutPulse 2.2s ease-in-out infinite; }
+
+/* ——— FULL-PAGE PIXEL TOWN ———
+   The town is the page background: a fixed layer behind every panel with
+   top-down pixel grass, dirt paths running between sections, houses with
+   red/orange roofs along the edges, a lab-like building, tree lines,
+   picket fences, flower patches, signs and a pond along the bottom-right
+   edge. Original rect-drawn art in the spirit of a starter town — no game
+   map, tiles or sprites copied. Panels float over it on .slab surfaces. */
+.town-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: #63ac4e; transition: background-color 1.4s ease; }
+.town-bg svg { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+/* The town's own sky strip: a gradient band across the top of the backdrop
+   whose colours are set per phase from the component (inline style vars
+   would fight the SVG slice) — the SVG wash, stars, sun/moon, window and
+   lamp glow carry the rest of the phase look. */
+.town-bg[data-phase="night"] { background: #2c4f31; }
+.town-bg[data-phase="dawn"] { background: #7d9a52; }
+.town-bg[data-phase="morning"] { background: #63ac4e; }
+.town-bg[data-phase="midday"] { background: #6ab257; }
+.town-bg[data-phase="golden"] { background: #63914a; }
+.town-bg[data-phase="dusk"] { background: #46663c; }
+
+/* ——— TIME-OF-DAY AMBIENCE ———
+   Phase changes crossfade: SVG fills/opacities ease over ~1.4s, and the
+   data panels shift ONLY their edge tint + outer glow (via --phase-edge /
+   --phase-glow set inline from the phase). Slab fills, text and chart
+   colours never change with the phase, so readability is identical in
+   every phase. Reduced motion (system setting, surfaced as
+   data-tod-instant) swaps instantly with no crossfade. */
+.town-bg svg * { transition: fill 1.4s ease, opacity 1.4s ease; }
+.tod-root .slab, .tod-root .town-readable {
+  border-color: var(--phase-edge, rgba(242,239,232,0.16));
+  transition: border-color 1.4s ease, box-shadow 1.4s ease;
+}
+.tod-root .slab {
+  box-shadow: 0 1px 0 var(--hairline) inset, 0 18px 40px var(--panel-shadow), 0 0 30px var(--phase-glow, transparent);
+}
+/* Day Vapor: panel borders stay the lilac token (the warm phase edge is a
+   dark-desk tint) — panel readability always wins over the town sky. */
+html[data-ui-theme="light"] .tod-root .slab, html[data-ui-theme="light"] .tod-root .town-readable { border-color: var(--border); }
+/* ——— Town re-light per UI theme ———
+   The town clock (phase) still runs the world layer; the UI theme re-lights
+   it. Night Vapor: the town leans neon — deeper violet ground at night,
+   a subtle perspective grid + striped sunset sun as brand motifs in the
+   town layer only. Day Vapor: pastel morning wash, faint cyan grid,
+   neon intensity down. Seasonal event filters later in this file compose
+   on top. */
+.town-bg::after {
+  content: ""; position: absolute; left: -10%; right: -10%; bottom: -2%; height: 30vh; pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, rgba(1, 205, 254, 0.17) 0 1px, transparent 1px 54px),
+    repeating-linear-gradient(0deg, rgba(255, 113, 206, 0.13) 0 1px, transparent 1px 32px);
+  transform: perspective(320px) rotateX(42deg); transform-origin: bottom;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 45%);
+  mask-image: linear-gradient(180deg, transparent, #000 45%);
+  opacity: 0.55;
+}
+.town-bg::before {
+  content: ""; position: absolute; top: 3.5vh; right: 5vw; width: 118px; height: 118px; border-radius: 50%; pointer-events: none;
+  background: repeating-linear-gradient(180deg, rgba(255, 251, 150, 0.85) 0 9px, rgba(255, 113, 206, 0.85) 9px 18px, rgba(185, 103, 255, 0.85) 18px 27px);
+  opacity: 0; transition: opacity 1.4s ease;
+}
+.town-bg[data-phase="dusk"]::before, .town-bg[data-phase="golden"]::before, .town-bg[data-phase="dawn"]::before { opacity: 0.32; }
+html[data-ui-theme="dark"] .town-bg[data-phase="night"] { background: #241243; filter: saturate(1.12) hue-rotate(-6deg); }
+html[data-ui-theme="dark"] .town-bg[data-phase="dusk"] { background: #3a2058; }
+html[data-ui-theme="light"] .town-bg { filter: saturate(0.78) brightness(1.1); }
+html[data-ui-theme="light"] .town-bg::after { opacity: 0.3; }
+html[data-ui-theme="light"] .town-bg[data-phase="night"] { background: #7d94a8; }
+html[data-ui-theme="light"] .town-bg[data-phase="dusk"] { background: #8a9a72; }
+@media (prefers-reduced-motion: reduce) { .town-bg::before { transition: none; } }
+.tod-root[data-tod-instant="1"] .slab, .tod-root[data-tod-instant="1"] .town-readable { transition: none; }
+.tod-root[data-tod-instant="1"] ~ * .town-bg, .tod-root[data-tod-instant="1"] .town-bg { transition: none; }
+[data-tod-instant="1"] .town-bg svg * { transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .town-bg, .town-bg svg *, .tod-root .slab, .tod-root .town-readable { transition: none !important; }
+}
+/* Soft darkening at the very centre column is NOT applied — readability
+   comes from the panels themselves, so the town stays bright in the
+   margins and in every gap between sections. */
+
+/* ——— FREE-ROAMING SCOUTS ———
+   A fixed overlay across the whole viewport/page. pointer-events: none so
+   the scouts NEVER block a click; only the small toggle (below) is
+   interactive. Walkers are positioned by transform writes from the
+   FreeRoamingScouts component; CSS owns the walk bob and personalities. */
+.roam-layer { position: fixed; inset: 0; z-index: 40; pointer-events: none; overflow: hidden; }
+.scout-walker { position: absolute; left: 0; top: 0; will-change: transform; }
+.scout-body { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.pixel-sprite { display: inline-block; will-change: transform; filter: drop-shadow(0 5px 5px rgba(10,30,10,0.5)); image-rendering: pixelated; }
+.scout-walker[data-moving="1"] .pixel-sprite { animation: scoutBob 0.42s steps(2, end) infinite; }
+.scout-walker[data-moving="1"] .scout-shadow { animation: scoutShadow 0.42s ease-in-out infinite; }
+.scout-walker[data-personality="dart"][data-moving="1"] .pixel-sprite { animation-duration: 0.24s; }
+.scout-walker[data-personality="drift"] .pixel-sprite { animation: scoutDrift 3.6s ease-in-out infinite; }
+.scout-walker[data-personality="nap"] .pixel-sprite { animation: scoutBreathe 3.2s ease-in-out infinite; }
+.scout-walker[data-celebrate="1"] .pixel-sprite { animation: scoutCelebrate 0.9s ease-in-out infinite; }
+.scout-shadow { width: 36px; height: 7px; border-radius: 999px; background: rgba(10,30,10,0.45); filter: blur(2px); }
+@keyframes scoutBob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes scoutShadow { 0%,100% { transform: scaleX(1); opacity: 0.85; } 50% { transform: scaleX(0.78); opacity: 0.6; } }
+@keyframes scoutDrift { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes scoutBreathe { 0%,100% { transform: scale(1, 1); } 50% { transform: scale(1.05, 0.94); } }
+@keyframes scoutCelebrate { 0%,100% { transform: translateY(0) rotate(0deg); } 30% { transform: translateY(-12px) rotate(-7deg); } 60% { transform: translateY(-12px) rotate(7deg); } }
+.roam-toggle {
+  position: fixed; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 60;
+  display: flex; gap: 6px; pointer-events: auto;
+}
+.roam-toggle button {
+  border-radius: 999px; padding: 8px 13px; font-size: 12px; font-weight: 700;
+  background: var(--bubble-bg); color: var(--text); border: 1px solid var(--border);
+  box-shadow: 0 10px 24px var(--panel-shadow); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.roam-toggle button:hover { border-color: var(--accent-strong); }
+/* On phones the roamers shrink and their bubbles narrow, so a passing scout
+   is a cameo, not a cover-up. They still roam the whole page. */
+@media (max-width: 640px) {
+  .roam-layer .pixel-sprite { width: 40px !important; height: 40px !important; }
+  .roam-layer .scout-shadow { width: 26px; }
+  .roam-layer .scout-bubble { max-width: 160px; font-size: 10px; padding: 5px 7px; }
+}
+.scout-bubble {
+  position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(calc(-50% + var(--bubble-x, 0px)));
+  width: max-content; max-width: 210px; z-index: 3;
+  background: var(--bubble-bg); border: 1px solid var(--border); border-radius: 12px;
+  padding: 6px 9px; font-size: 11px; line-height: 1.35; color: var(--text);
+  box-shadow: 0 8px 20px var(--panel-shadow);
+  /* Bubbles are gated by the roam loop (data-bubble): shown only in free
+     town space, during a pin celebration, or an edge peek — never over
+     data. Hidden state is fully non-interactive and invisible. */
+  opacity: 0; visibility: hidden; transition: opacity 0.35s ease, visibility 0.35s;
+}
+.scout-walker[data-bubble="1"] .scout-bubble { opacity: 1; visibility: visible; }
+.scout-walker[data-celebrate="1"] .scout-bubble { border-color: var(--accent); }
+.scout-bubble::after {
+  content: ""; position: absolute; left: 50%; bottom: -5px; width: 9px; height: 9px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--bubble-bg); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.scout-zzz { position: absolute; top: -6px; right: -10px; font-size: 13px; color: #8fa3bf; animation: scoutZzzFloat 2.6s ease-in-out infinite; }
+@keyframes scoutZzzFloat { 0% { transform: translate(0, 4px); opacity: 0.4; } 50% { opacity: 1; } 100% { transform: translate(5px, -7px); opacity: 0.4; } }
+@keyframes dealGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(217,164,65,0.0), 0 10px 26px rgba(0,0,0,0.35); } 50% { box-shadow: 0 0 0 3px rgba(217,164,65,0.35), 0 10px 26px rgba(0,0,0,0.35); } }
+.deal-pinned { animation: dealGlow 2.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .scout-dot, .scout-walker .pixel-sprite, .scout-walker .scout-shadow, .scout-zzz, .deal-pinned { animation: none !important; }
+}
+
+/* ——— V2 MOBILE-FIRST SHELL ——— */
+html, body { overflow-x: clip; }
+main { overflow-x: clip; }
+.touch-target { min-height: 44px; min-width: 44px; }
+.command-strip {
+  position: sticky; top: calc(env(safe-area-inset-top, 0px) + 6px); z-index: 50;
+}
+/* Smart-sticky: the strip slides away on scroll-down and pops back on
+   scroll-up (state toggled from the app's scroll listener with direction
+   hysteresis). Transform-only — the sticky box keeps its flow space, so
+   content never jumps. Focus inside the strip forces it visible
+   (keyboard-safe), and reduced motion makes the toggle instant. */
+.tod-root .command-strip {
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1), border-color 1.4s ease, box-shadow 1.4s ease;
+  will-change: transform;
+}
+.command-strip.cmd-hidden { transform: translateY(calc(-100% - env(safe-area-inset-top, 0px) - 22px)); }
+.command-strip:focus-within { transform: translateY(0) !important; }
+@media (prefers-reduced-motion: reduce) { .tod-root .command-strip { transition: none; } }
+/* Chrome numerals — command-strip headline figures ONLY (brand moment).
+   Night Vapor runs the full pink→cyan→lemon sunset gradient; Day Vapor
+   uses deepened stops so the figures stay AA-legible on pearl. */
+.chrome-num {
+  background: linear-gradient(92deg, #ff71ce 0%, #01cdfe 55%, #fffb96 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+html[data-ui-theme="light"] .chrome-num {
+  background: linear-gradient(92deg, #b3126f 0%, #007a99 55%, #7b2fbe 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+/* Pokédex-terminal bezel for Show Mode: chunky device frame + a thin
+   vapor light-bar. Chrome cue only — the verdict data inside stays
+   disciplined monochrome. */
+.dex-bezel {
+  border: 3px solid var(--border) !important;
+  border-radius: 22px !important;
+  box-shadow: inset 0 0 0 2px var(--hairline), 0 14px 34px var(--panel-shadow) !important;
+  position: relative;
+}
+.dex-bezel::before {
+  content: ""; position: absolute; top: 8px; left: 16px; right: 16px; height: 4px; border-radius: 999px;
+  background: linear-gradient(90deg, #ff71ce, #01cdfe, #b967ff);
+  opacity: 0.85; pointer-events: none;
+}
+.mobile-tab-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 70;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--sheet-bg); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border-top: 1px solid var(--border);
+}
+.mobile-tab-bar button { min-height: 52px; }
+@media (min-width: 768px) { .mobile-tab-bar { display: none; } .mobile-tab-spacer { display: none; } }
+/* ——— TOP BAR REDESIGN (Oct 9) ———
+   Mobile header REMOVED: below 768px the desktop top bar
+   (.command-strip: logo bar + top tabs) does not render at all —
+   navigation is the sticky bottom footer bar above. Desktop
+   (>=768px) keeps the single unified smart-sticky bar. */
+@media (max-width: 767px) { .command-strip { display: none !important; } }
+/* Show Mode floating camera button — MOBILE ONLY: fixed bottom-right,
+   above the sticky footer, safe-area aware, 56px target, always
+   visible while browsing. Hidden on desktop, where Show Mode has no
+   bar button either (it opens from the mobile FAB only). */
+.show-mode-fab { display: none; }
+@media (max-width: 767px) {
+  .show-mode-fab {
+    display: flex; align-items: center; justify-content: center;
+    position: fixed; right: 16px;
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+    z-index: 80; width: 56px; height: 56px; min-width: 56px; min-height: 56px;
+    border-radius: 999px; background: var(--accent); color: #14100a;
+    border: 2px solid var(--accent-strong, var(--accent));
+    box-shadow: 0 12px 28px var(--panel-shadow), 0 0 0 3px rgba(255, 113, 206, 0.25);
+    cursor: pointer;
+  }
+  .show-mode-fab-dot {
+    position: absolute; top: 2px; right: 2px; width: 12px; height: 12px;
+    border-radius: 999px; background: var(--hold);
+    border: 2px solid var(--sheet-bg);
+  }
+}
+.mobile-tab-spacer { height: calc(64px + env(safe-area-inset-bottom, 0px)); }
+/* Card detail is a dedicated PAGE (Oct 9) — the slide-over /
+   full-screen-sheet presentation is retired. The page renders in the
+   normal flow under the unified top bar; nothing about it is fixed or
+   overlaid. Safe-area aware bottom padding on phones. */
+.card-detail-page { padding-bottom: env(safe-area-inset-bottom, 0px); }
+@media (max-width: 640px) {
+  /* Phone performance: calmer town/scouts, no decorative glow loops */
+  .deal-pinned { animation: none; }
+  .roam-layer { opacity: 0.9; }
+  .town-bg svg * { transition: none !important; }
+}
+/* Zebra striping (Oct 9): odd rows/cards take the darker --row-zebra /
+   --slabz shade; hover steps to the stronger --row-hover so it never
+   blends with the zebra shade, in both themes. Focus keeps the global
+   :focus-visible outline (never colour-only). */
+.zebra-row:hover, .zebra-card:hover { background: var(--row-hover) !important; }
+.slab.zebra-alt { background: linear-gradient(180deg, var(--slabz-1), var(--slabz-2) 55%, var(--slabz-3)); }
+/* Density (F): TERMINAL permanently — the app sets data-density=
+   "terminal" unconditionally, clears any stored preference on load,
+   and no density switch exists in the UI. */
+.tod-root[data-density="terminal"] .slab { border-radius: 10px; }
+.tod-root[data-density="terminal"] main { font-size: 14px; }
+/* Seasonal events — town-only cosmetics layered over day/night */
+.tod-root[data-event="halloween"] .town-bg { filter: sepia(0.28) hue-rotate(-14deg) saturate(1.08); }
+.tod-root[data-event="autumn"] .town-bg { filter: sepia(0.2) hue-rotate(-8deg); }
+.tod-root[data-event="snow"] .town-bg { filter: brightness(1.07) saturate(0.82); }
+@media (prefers-reduced-motion: reduce) { .tod-root[data-event] .town-bg { filter: none; } }
+/* V2 hub — progressive disclosure: only the chosen surface renders open;
+   every other v2 section stays folded (one IA, clean first paint). */
+.v2-hub > section { display: none; }
+.v2-hub[data-tab="show"] > #v2-show,
+.v2-hub[data-tab="deals"] > #v2-trenches,
+.v2-hub[data-tab="growth"] > #v2-indices,
+.v2-hub[data-tab="risk"] > #v2-risk,
+.v2-hub[data-tab="scouts"] > #v2-league,
+.v2-hub[data-tab="market"] > #v2-exit,
+.v2-hub[data-tab="town"] > #v2-npc,
+.v2-hub[data-tab="town"] > #v2-events,
+.v2-hub[data-tab="lineage"] > #v2-lineage { display: block; }
+/* Holo-tilt slab (round 4): transform is JS-driven via CSS vars;
+   reduced-motion freezes it flat regardless of pointer/sensor input
+   (the component also guards its handlers). */
+@media (prefers-reduced-motion: reduce) {
+  .holo-slab { transform: none !important; }
+}
+/* Sticky table headers inside internally-scrolling tables */
+thead th { position: sticky; top: 0; background: var(--th-bg); z-index: 1; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }

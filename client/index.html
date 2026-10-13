@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Empty inline icon: stops the browser fetching /favicon.ico, which
+         lives outside the space's routes and fails auth. -->
+    <link rel="icon" href="data:," />
+    <title>Pokemon Card Dashboard</title>
+    <!-- UI theme (Vapor Vault): resolve BEFORE first paint so the page
+         never flashes the wrong theme. The theme is ALWAYS Auto — it
+         follows the OS prefers-color-scheme, with no in-app override;
+         any previously persisted "v2-ui-theme" preference is cleared
+         and ignored. The app keeps this attribute live (incl. OS
+         changes while the page is open). Default with no script: dark
+         (Night Vapor) tokens on :root. -->
+    <script>
+      (function () {
+        try {
+          window.localStorage.removeItem("v2-ui-theme");
+          var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var resolved = dark ? "dark" : "light";
+          document.documentElement.dataset.uiTheme = resolved;
+          document.documentElement.style.colorScheme = resolved;
+        } catch (e) {
+          document.documentElement.dataset.uiTheme = "dark";
+        }
+      })();
+    </script>
+    <script src="./src/main.tsx" type="module"></script>
+  </head>
+  <body>
+    <div
+      data-generated-space-root=""
+      data-generated-space-slug="pokemon-card-dashboard"
+    ></div>
+  </body>
+</html>

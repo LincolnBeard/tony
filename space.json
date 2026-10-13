@@ -1,0 +1,11 @@
+{
+  "entry": "client/dist/index.html",
+  "managedCronJobs": [
+    "pokemon-card-dashboard-daily-refresh",
+    "pokemon-scout-sweep-2h"
+  ],
+  "name": "Pokemon Card Dashboard",
+  "platformVersion": 25,
+  "runtime": "typescript",
+  "slug": "pokemon-card-dashboard"
+}

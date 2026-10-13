@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+.bun-cache/
+
+# Databases — the live app.db holds the private collection; never commit it
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Secrets / local env
+.env
+.env.*
+
+# Build output
+dist/
+client/dist/
+client/dist-cvm/
+server/dist/
+*.tsbuildinfo
+
+# Logs & OS noise
+*.log
+.DS_Store
