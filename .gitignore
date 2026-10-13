@@ -23,3 +23,6 @@ server/dist/
 # Logs & OS noise
 *.log
 .DS_Store
+
+# Vercel local state (project link, pulled env) — never commit
+.vercel/

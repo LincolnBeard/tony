@@ -48,8 +48,11 @@ What `bun run start` does (`server/standalone.ts`):
 
 - Creates a local SQLite database (default `data/graded-vault.db`,
   override with `DATABASE_PATH`; see `.env.example`) and applies the
-  drizzle migrations from `drizzle/`. Delete the file to reset to the
-  pristine demo seed.
+  drizzle migrations (from the embedded copy of `drizzle/*.sql` — see
+  Deploying → Vercel for why). Delete the file to reset to the
+  pristine demo seed. Set `DATABASE_URL` + `DATABASE_AUTH_TOKEN`
+  instead to point this same server at a remote libsql (Turso)
+  database.
 - Serves the React client from `client/dist/` (built on demand by
   `client/build-standalone.mjs`, a direct Bun.build of the client with
   the canonical production configuration — the SDK's own client
@@ -116,21 +119,77 @@ designed to fail *honestly* rather than fake a result:
 
 ## Deploying
 
-The standalone server is a single long-lived Bun process with a local
-SQLite file, so any host that runs a persistent process with a disk
-(a VPS, Fly.io, Render, a container host) can serve it as-is:
-`bun install && bun run start`, with `PORT` set by the host.
+### A persistent-process host (VPS, Fly.io, Render, a container)
 
-**Serverless caveat:** hosts like Vercel run short-lived functions
-with no persistent local disk, so the file-backed SQLite database
-does not survive there. (The client bundle alone *can* be hosted as
-static files, but the actions need the server.) To deploy on
-serverless, point the database at a hosted libsql/Turso database
-(`@libsql/client` accepts a remote `libsql://` URL with an auth
-token — `server/standalone.ts` is the one place to wire that in) or
-port the data layer to hosted Postgres. The demo-mode stubs above
-apply on any host: live research, hunts, and OCR need real
-search/agent/inference services behind the same `ctx` seams.
+The standalone server is a single long-lived Bun process with a local
+SQLite file: `bun install && bun run start`, with `PORT` set by the
+host. Done — nothing else in this section applies.
+
+### Vercel (free Hobby tier) + Turso (free tier)
+
+Vercel runs short-lived functions with **no persistent process and no
+durable local disk**, so the file-backed database can't live there.
+This repo is wired for the serverless shape instead:
+
+- **Client** → static files. Vercel runs
+  `bun ./client/build-standalone.mjs` (see `vercel.json`) and serves
+  `client/dist/`.
+- **`POST /actions`** → the Vercel Function in `api/actions.ts`
+  (a rewrite in `vercel.json` maps `/actions` → `/api/actions`;
+  SPA deep links fall back to `index.html`).
+- **Database** → a **remote libsql database on Turso**, reached via
+  two environment variables. The function and the standalone server
+  share all hosting logic (`server/src/host.ts`): the DB connection
+  is opened lazily and cached per warm instance, the drizzle
+  migrations are applied **only if the tables are absent** (from the
+  embedded copy in `server/src/migrations-data.ts`, generated from
+  `drizzle/*.sql` by `scripts/embed-migrations.mjs`), and the
+  actions' `ensure*` seed functions then create the demo vault on
+  first read. A brand-new empty Turso database needs **no manual
+  setup** — the first page load builds and seeds it.
+- **Runtime** → `"bunVersion": "1.x"` in `vercel.json` makes Vercel
+  run the function on its **Bun runtime** (currently public beta) in
+  place of Node.js. This stack is Bun-native end to end (Bun package
+  manager, Bun.build client bundle, `@libsql/client` over
+  HTTPS/WSS), so Bun is the runtime the code is developed and tested
+  against. If the beta runtime ever misbehaves, delete the
+  `bunVersion` line: the function is a Web-standard fetch handler and
+  runs unchanged on Vercel's Node.js runtime.
+
+**Step 1 — create the free Turso database** (dashboard only, no CLI):
+
+1. Sign in at [turso.tech](https://turso.tech) → **Databases** →
+   **Create Database**. Name it (e.g. `graded-vault-demo`), pick the
+   group/location nearest your Vercel region, create.
+2. Open the new database → **Connect** (or the **⋯** menu) →
+   **Create Token** — a read/write token with no expiry is fine for a
+   demo. Copy the two values it shows you:
+   - the database URL, shaped `libsql://<db-name>-<org>.turso.io`
+   - the auth token (shown once — copy it now)
+
+**Step 2 — import the repo into Vercel:**
+
+1. [vercel.com](https://vercel.com) → **Add New → Project** → import
+   this GitHub repository. Root directory: the repo root (default).
+2. Vercel reads `vercel.json`, so framework/build/output settings are
+   already correct — don't override them.
+3. Before deploying, open **Environment Variables** and add:
+   - `DATABASE_URL` = the `libsql://…` URL from step 1
+   - `DATABASE_AUTH_TOKEN` = the token from step 1
+4. **Deploy.** First load is a cold start: the function creates the
+   schema and seeds the demo vault (a few seconds), after which the
+   dashboard behaves exactly like the local demo — including the
+   demo-mode stubs: **live research, scout hunts, and slab OCR stay
+   stubbed and labeled on Vercel too.** To reset the demo data,
+   delete the Turso database and create a fresh one (updating the two
+   env vars), or clear its tables — the next cold start rebuilds it.
+
+**Free-tier notes:** Hobby functions default to a 10s timeout; the
+function asks for 60s (the Hobby cap, and what a seeding cold start
+may need). Hobby also pauses nothing and charges nothing at demo
+traffic levels; Turso's free tier is far larger than this demo will
+ever use. Scheduled jobs (the Muse runtime's crons in `space.json`)
+do not exist on Vercel — refresh/sweep still only happen from the UI.
 
 ## Layout
 
@@ -140,8 +199,15 @@ search/agent/inference services behind the same `ctx` seams.
   it outside the Muse runtime; `client/build.mjs` is the runtime's
   own build shim.
 - `server/` — Bun server actions + Drizzle schema, plus
-  `server/standalone.ts`, the standalone demo host (local DB, action
-  HTTP endpoint, static client, demo-mode `ctx` stubs).
+  `server/standalone.ts`, the persistent-process demo host (static
+  client + action endpoint). Everything a host needs beyond its own
+  process model — database, schema, demo-mode `ctx` stubs, action
+  dispatch — lives in `server/src/host.ts`, shared by both hosts.
+- `api/` — the Vercel Function shell (`api/actions.ts`): a thin
+  fetch handler over `server/src/host.ts`. See Deploying → Vercel.
+- `scripts/` — `embed-migrations.mjs`, which regenerates
+  `server/src/migrations-data.ts` from `drizzle/*.sql`
+  (`bun run embed:migrations`).
 - `drizzle/` — SQL migrations (schema only, no data).
 - `vendor/` — the vendored `@hatch/space-sdk` tarball (referenced by
   `package.json` as a `file:` dependency so installs work anywhere).
