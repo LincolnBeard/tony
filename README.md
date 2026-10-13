@@ -147,14 +147,29 @@ This repo is wired for the serverless shape instead:
   actions' `ensure*` seed functions then create the demo vault on
   first read. A brand-new empty Turso database needs **no manual
   setup** — the first page load builds and seeds it.
-- **Runtime** → `"bunVersion": "1.x"` in `vercel.json` makes Vercel
-  run the function on its **Bun runtime** (currently public beta) in
-  place of Node.js. This stack is Bun-native end to end (Bun package
-  manager, Bun.build client bundle, `@libsql/client` over
-  HTTPS/WSS), so Bun is the runtime the code is developed and tested
-  against. If the beta runtime ever misbehaves, delete the
-  `bunVersion` line: the function is a Web-standard fetch handler and
-  runs unchanged on Vercel's Node.js runtime.
+- **Runtime** → Vercel's standard **Node.js runtime**. (An earlier
+  version pinned Vercel's Bun public-beta runtime via `bunVersion`
+  in `vercel.json` while the function file also declared
+  `runtime: "nodejs"` — contradictory, and the combination returned
+  Vercel's plain-text 500 on every `/actions` call: the function
+  died before any handler code ran, with the cause in no readable
+  log. `bunVersion` is removed; Bun remains the package manager and
+  builds the client, which is build-time only.) Two structural
+  choices keep the Node function alive and diagnosable:
+  - The remote database is reached through the **web builds** of
+    `@libsql/client` and `drizzle-orm` (`@libsql/client/web`,
+    `drizzle-orm/libsql/web`) — pure JavaScript over HTTPS/WSS. The
+    default Node builds eagerly import the native `libsql` addon at
+    module load; a bundle that fails to place that addon kills the
+    function at import time. Only the local file database (the
+    standalone server) uses the Node builds.
+  - `api/actions.ts` is a Web-standard `POST` method export with
+    **no top-level imports**: the host graph loads through a dynamic
+    import inside the handler, so any load/connect failure is
+    reported to the caller as JSON
+    `{ error: { name, message } }` (HTTP 500) instead of an opaque
+    platform 500. If `/actions` ever 500s, the response body IS the
+    diagnosis.
 
 **Step 1 — create the free Turso database** (dashboard only, no CLI):
 
@@ -203,8 +218,10 @@ do not exist on Vercel — refresh/sweep still only happen from the UI.
   client + action endpoint). Everything a host needs beyond its own
   process model — database, schema, demo-mode `ctx` stubs, action
   dispatch — lives in `server/src/host.ts`, shared by both hosts.
-- `api/` — the Vercel Function shell (`api/actions.ts`): a thin
-  fetch handler over `server/src/host.ts`. See Deploying → Vercel.
+- `api/` — the Vercel Function shell (`api/actions.ts`): a
+  Web-standard `POST` handler over `server/src/host.ts`, loaded
+  dynamically so failures self-report as JSON. See Deploying →
+  Vercel.
 - `scripts/` — `embed-migrations.mjs`, which regenerates
   `server/src/migrations-data.ts` from `drizzle/*.sql`
   (`bun run embed:migrations`).

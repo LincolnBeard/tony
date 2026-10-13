@@ -12,12 +12,17 @@
    What lives here:
 
    - DATABASE (lazy, cached per process): if DATABASE_URL is set it is
-     used verbatim with @libsql/client (a remote Turso database is a
-     `libsql://…` URL + DATABASE_AUTH_TOKEN; a `file:…` URL also works,
-     which is how the local harness exercises this exact code path).
-     If DATABASE_URL is unset, fall back to the local file database
-     (DATABASE_PATH, default data/graded-vault.db) so `bun run start`
-     behaves exactly as before.
+     used verbatim (a remote Turso database is a `libsql://…` URL +
+     DATABASE_AUTH_TOKEN; a `file:…` URL also works, which is how the
+     local harness exercises this exact code path). If DATABASE_URL
+     is unset, fall back to the local file database (DATABASE_PATH,
+     default data/graded-vault.db) so `bun run start` behaves exactly
+     as before. The driver pair is chosen per branch and loaded
+     dynamically inside openDb() — see the comments there: the remote
+     branch uses the pure-JS web builds (@libsql/client/web +
+     drizzle-orm/libsql/web) so the Vercel function's module graph
+     never touches the native `libsql` addon, and nothing
+     database-related loads at module-init time at all.
    - SCHEMA: on first use, if the app's tables are absent, the drizzle
      migrations are applied from the embedded copy in
      ./migrations-data.ts (generated from drizzle/*.sql — see
@@ -36,8 +41,17 @@
      request/response validation, shared verbatim by both shells.
    ===================================================================== */
 
-import { createClient, type Client } from "@libsql/client";
-import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
+/* Driver imports are TYPE-ONLY here (erased at runtime): the actual
+   createClient/drizzle implementations are loaded dynamically inside
+   openDb(), per branch. Statically importing @libsql/client's Node
+   entry would eagerly load its sqlite3 module, which statically
+   imports the native `libsql` addon — if a serverless bundle fails
+   to place that addon for the function's platform, the module dies
+   at import time, before any handler code can report why. The web
+   entry's Client type is used for the shared handle; both drivers'
+   drizzle() return the same driver-core LibSQLDatabase class. */
+import type { Client } from "@libsql/client/web";
+import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -80,25 +94,52 @@ export function getDb(): Promise<DbHandle> {
 
 async function openDb(): Promise<DbHandle> {
   const remoteUrl = process.env.DATABASE_URL;
-  let client: Client;
-  let description: string;
-  if (remoteUrl) {
-    client = createClient({
+
+  if (remoteUrl && !remoteUrl.startsWith("file:")) {
+    /* REMOTE database (Turso, on Vercel): the WEB builds of
+       @libsql/client and drizzle-orm. They are pure JavaScript —
+       hrana over HTTPS/WSS plus fetch — and never import the native
+       `libsql` addon (the Node builds do, eagerly: @libsql/client's
+       Node entry statically imports its sqlite3 module, whose first
+       line imports the addon). In a serverless bundle, an addon
+       that wasn't traced/placed for the function's platform turns
+       that import into a module-init crash — the function's plain
+       500 with the cause visible nowhere. Loaded dynamically, like
+       everything database-related here, so module init stays free
+       of anything that can throw. */
+    const { createClient } = await import("@libsql/client/web");
+    const { drizzle } = await import("drizzle-orm/libsql/web");
+    const client = createClient({
       url: remoteUrl,
       authToken: process.env.DATABASE_AUTH_TOKEN || undefined,
     });
-    description = remoteUrl.startsWith("file:")
-      ? `DATABASE_URL (${remoteUrl})`
-      : "remote libsql database (DATABASE_URL)";
+    const db = drizzle(client, { schema });
+    await ensureSchema(client);
+    return { client, db, description: "remote libsql database (DATABASE_URL)" };
+  }
+
+  /* LOCAL database (standalone server + local function harness): the
+     Node builds, which support file: URLs through the native addon.
+     Also loaded dynamically — on Vercel this branch is only reached
+     with a file: DATABASE_URL, which the deployment never sets. */
+  const { createClient } = await import("@libsql/client");
+  const { drizzle } = await import("drizzle-orm/libsql");
+  let url: string;
+  let description: string;
+  if (remoteUrl) {
+    url = remoteUrl;
+    description = `DATABASE_URL (${remoteUrl})`;
   } else {
     const dbPath = process.env.DATABASE_PATH
       ? resolve(ROOT, process.env.DATABASE_PATH)
       : join(ROOT, "data", "graded-vault.db");
     mkdirSync(dirname(dbPath), { recursive: true });
-    client = createClient({ url: `file:${dbPath}` });
+    url = `file:${dbPath}`;
     description = `local file database (${dbPath})`;
   }
-  const db = drizzle(client, { schema });
+  const nodeClient = createClient({ url });
+  const db = drizzle(nodeClient, { schema });
+  const client = nodeClient as unknown as Client;
   await ensureSchema(client);
   return { client, db, description };
 }
