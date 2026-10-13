@@ -7,10 +7,14 @@
     "typecheck": "bun x tsc --noEmit -p client/tsconfig.json && bun x tsc --noEmit -p server/tsconfig.json",
     "build": "bun run build:server && bun run build:client",
     "build:server": "cd server && bun build ./src/actions.ts --target=bun --outfile=./dist/actions.js",
-    "build:client": "bun ./client/build.mjs"
+    "build:client": "bun ./client/build.mjs",
+    "build:client:standalone": "bun ./client/build-standalone.mjs",
+    "start": "(test -f client/dist/index.html || bun run build:client:standalone) && bun server/standalone.ts",
+    "dev": "bun run build:client:standalone && bun --watch server/standalone.ts"
   },
   "dependencies": {
     "@hatch/space-sdk": "file:./vendor/space-sdk.tgz",
+    "@libsql/client": "^0.14.0",
     "@tanstack/react-query": "5.100.10",
     "drizzle-orm": "0.45.2",
     "react": "19.2.5",
