@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeAreaTopScrim, fileToBase64 } from "@hatch/space-sdk/client";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -85,13 +85,99 @@ function callColor(call: string) {
   return "var(--hold)";
 }
 
-/* Every price carries a source TYPE — see the registry at the bottom. */
-function saleType(s: { verified: boolean; source: string; description: string }): { label: string; color: string } {
-  if (!s.verified) return { label: "Seller-reported / UNVERIFIED", color: "var(--sell)" };
-  const t = (s.source + " " + s.description).toLowerCase();
-  if (t.includes("ask")) return { label: "Active listing / ask", color: "var(--ask-text)" };
-  if (t.includes("estimate") || t.includes("cardtrack") || t.includes("pricecharting") || t.includes("context")) return { label: "Aggregator value", color: "var(--accent-ink)" };
-  return { label: "Verified sold comp", color: "var(--hold)" };
+/* Pill discipline (owner, Oct 14): a pill carries a SHORT TOKEN only —
+   the call verbs, never a sentence, qualifier, or truncated string.
+   pillCall is a deterministic RENDER mapping: cut at the em-dash
+   (qualifier dropped), drop trailing tactic phrases ("INTO
+   STRENGTH"), keep at most two verb tokens joined by " / ".
+   HOLD — NO PRICE YET → HOLD · HOLD — VERIFY NEXT → HOLD ·
+   SELL INTO STRENGTH → SELL · SELL / TRIM INTO STRENGTH →
+   SELL / TRIM · TRIM / WATCH → TRIM / WATCH · SOLD → SOLD ·
+   TRADED → TRADED. The full call string stays in the record and
+   renders in full only in the detail page's Decision block. */
+const CALL_VERBS = new Set(["HOLD", "SELL", "TRIM", "WATCH", "SOLD", "TRADED", "BUY", "KEEP"]);
+function pillCall(call: string): string {
+  const head = (call.split(/[—–]/)[0] ?? "").trim();
+  const sides = head.split("/").map(s => s.trim()).filter(Boolean);
+  const verbs = sides.map(side => (side.split(/\s+/)[0] ?? "").toUpperCase()).filter(v => CALL_VERBS.has(v));
+  const tokens = (verbs.length ? verbs : sides.map(s => (s.split(/\s+/)[0] ?? "").toUpperCase())).slice(0, 2);
+  return tokens.join(" / ") || head.toUpperCase();
+}
+
+/* ——— Scroll anchoring (owner, Oct 14 — generalized from the
+   card-click report to ALL navigation: "when clicking any link it
+   loads page position from the previous page") ———
+   EVERY forward navigation lands anchored at the TOP of the new
+   view. The reset lives here, once, in the shared navigation
+   layer: goNav / openShowMode / card-detail entry all call it, and
+   closeDetail (Back) NEVER does — Back restores the origin
+   scrollers captured on entry instead, and the two paths share no
+   code. In-place state changes (filtering, sorting, expanding the
+   scout setup form) are not navigation and never touch this.
+   Every scroller that can carry page scroll is reset (window,
+   document element, and any scrollable wrapper column — the mobile
+   embed scrolls a wrapper, not the window), and the reset is
+   re-asserted as the new view paints so late-loading art cannot
+   drag the anchor off the top. */
+function scrollEveryScrollerToTop() {
+  try { window.scrollTo({ top: 0, behavior: "auto" as ScrollBehavior }); } catch { window.scrollTo(0, 0); }
+  if (document.documentElement) document.documentElement.scrollTop = 0;
+  if (document.body) document.body.scrollTop = 0;
+  document.querySelectorAll<HTMLElement>("body *").forEach((el) => {
+    if (el.scrollTop > 0 && !el.classList.contains("table-scroll")) {
+      const oy = window.getComputedStyle(el).overflowY;
+      if (oy === "auto" || oy === "scroll") el.scrollTop = 0;
+    }
+  });
+}
+function anchorTopWithSettle() {
+  scrollEveryScrollerToTop();
+  const raf = requestAnimationFrame(() => scrollEveryScrollerToTop());
+  const t1 = setTimeout(() => scrollEveryScrollerToTop(), 120);
+  const t2 = setTimeout(() => scrollEveryScrollerToTop(), 450);
+  return () => { cancelAnimationFrame(raf); clearTimeout(t1); clearTimeout(t2); };
+}
+
+/* Lock system REMOVED (Oct 14, 2026 — the owner: "Shouldn't be locked
+   anyways. I want this to be more automated, regardless if price
+   isn't right"): there are no owner-kept certs, no lock markers and
+   no KEPT chips anywhere. Every card carries normal comp-based
+   value labels. (The "owner-kept" text needle in isVerifiedCompSale
+   below stays: it classifies HISTORICAL kept-value evidence rows as
+   non-comps — record classification, not a lock.) */
+
+/* saleType() removed (Oct 13): the three-field Recent sales list
+   (date · price · venue via saleVenue) was its last caller — the
+   badge pills it fed no longer render anywhere. */
+/* Recent-sales list venue string (owner, Oct 13): the list renders
+   DATE · PRICE · WHERE only — the venue as filed, shortened to its
+   recognizable form. An unverified record carries it IN the
+   where-string ("Private sale — seller-reported (unverified)", or a
+   trailing "(unverified)"), so no unverified figure ever reads as a
+   clean comp. Full descriptions stay in the evidence data only. */
+/* Verified-COMP classification for charting (owner, Oct 13): a sale
+   plots only when it is a classified verified sold comp — verified,
+   from a PRIMARY venue (eBay sold / Fanatics Collect / Goldin /
+   Heritage / PWCC / Mercari / Yahoo Japan), with no aggregator or
+   kept-value marker in its source. This mirrors the forecast
+   classifier's filing rules: PSA estimates, PriceCharting-labelled
+   rows and owner-kept context rows are evidence, never comps, and
+   never plot. */
+function isVerifiedCompSale(s: { verified: boolean; source: string }): boolean {
+  if (!s.verified) return false;
+  const src = s.source ?? "";
+  if (/owner-kept|psa estimate|aggregator|pricecharting|cardtrack|pokeprices|collektr|collectr|context only/i.test(src)) return false;
+  return /eBay|Fanatics|Goldin|Heritage|PWCC|Mercari|Yahoo/i.test(src);
+}
+function saleVenue(s: { verified: boolean; source: string }): string {
+  const src = s.source ?? "";
+  let v = src.includes("Fanatics") ? "Fanatics Collect"
+    : src.includes("eBay") ? "eBay sold"
+    : src.includes("PSA") ? "PSA estimate"
+    : src.includes("Private sale") ? "Private sale"
+    : (src.split("—")[0]?.split("(")[0]?.trim() || "—");
+  if (!s.verified) v = v === "Private sale" ? "Private sale — seller-reported (unverified)" : `${v} (unverified)`;
+  return v;
 }
 function registryTypeColor(t: string): string {
   if (t.includes("Verified sold")) return "var(--hold)";
@@ -103,10 +189,6 @@ function registryTypeColor(t: string): string {
 
 const SCOUT_COLORS: Record<string, string> = { gengar: "#8b7fd4", pikachu: "#e8bc63", eevee: "#57b08a", snorlax: "#7a9cc6", rocket: "#d43a2f" };
 
-/* Demo export: no owner-kept (locked) certs. The private deployment
-   locks specific certs at owner-confirmed values via this list; it
-   ships empty here, so every value in the demo floats to comps. */
-const OWNER_KEPT_CERTS_CLIENT: string[] = [];
 
 /* ——— Original pixel-art scout sprites ———
    Little characters drawn from plain SVG rects in the same pixel style as
@@ -252,7 +334,7 @@ function watchSearchLink(w: WatchItem, scout?: Scout): { label: string; url: str
 
 /* ——— TIME-OF-DAY CYCLE ———
    The town lives on the VIEWER'S local clock (browser timezone, so it
-   travels with the owner): Night 7pm–5am, Dawn 5–7am, Morning 7–11am,
+   travels with the viewer): Night 7pm–5am, Dawn 5–7am, Morning 7–11am,
    Midday 11am–4pm, Golden hour 4–6pm, Dusk 6–7pm, then Night again.
    At 7:06pm Pacific in October this resolves to Night. The phase drives
    the town's sky, celestial body, stars, window/lamp lighting and pond,
@@ -356,7 +438,7 @@ const LAUNCHER_GLYPHS: Record<string, string[]> = {
   market: ["M3.5 20.5h17", "M6.5 20.5v-7", "M12 20.5V5", "M17.5 20.5v-10"],
   collection: ["M6.5 3.5h11A1 1 0 0 1 18.5 4.5v15a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z", "M5.5 8.5h13", "M12 16.2a2.4 2.4 0 1 0 0-4.8 2.4 2.4 0 0 0 0 4.8Z"],
   watch: ["M2.8 12S5.8 5.8 12 5.8 21.2 12 21.2 12 18.2 18.2 12 18.2 2.8 12 2.8 12Z", "M12 14.8a2.8 2.8 0 1 0 0-5.6 2.8 2.8 0 0 0 0 5.6Z"],
-  lineage: ["M10.2 13.8a4.2 4.2 0 0 0 6 .4l2.9-2.9a4.24 4.24 0 1 0-6-6l-1.6 1.6", "M13.8 10.2a4.2 4.2 0 0 0-6-.4l-2.9 2.9a4.24 4.24 0 1 0 6 6l1.6-1.6"],
+  sell: ["M3.5 3.5h7.8l9.2 9.2-7.8 7.8-9.2-9.2V3.5Z", "M7.4 7.4h.01"],
   league: NAV_GLYPHS.scouts!,
   town: ["M3 12 7.5 7.2 12 12", "M5.2 10.3v8.2h4.6v-8.2", "M12.8 12 17 7.8l4.2 4.2", "M14.6 10.4v8.1h4.8v-6.4"],
   growth: NAV_GLYPHS.insights!,
@@ -372,9 +454,9 @@ function LauncherGlyph({ id }: { id: string }) {
    accessible label, so no information is lost. It is the FAR-RIGHT
    zone of the desktop top bar (logo/wordmark left, the five tabs in
    the middle, time + phase icon at the far right edge). This is the
-   TOWN clock (world layer), separate from the vapor UI theme, which
-   is likewise always Auto (prefers-color-scheme) with no in-app
-   control. */
+   TOWN clock (world layer), separate from the vapor UI theme: the UI
+   is locked to Night Vapor permanently (owner, Oct 13, 2026) while
+   this clock keeps showing the town's own time-of-day phase as art. */
 function TownClockChip({ now, phase }: { now: Date; phase: TodPhase }) {
   const meta = TOD_META[phase];
   const timeLabel = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" });
@@ -382,7 +464,7 @@ function TownClockChip({ now, phase }: { now: Date; phase: TodPhase }) {
   return (
     <span role="img" aria-label={fullLabel} title={fullLabel}
       className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-bold border"
-      style={{ borderColor: "var(--glass-edge)", color: "var(--text)", background: "var(--glass)" }}>
+      style={{ borderColor: "var(--chrome-edge)", color: "var(--text)", background: "var(--surface-2)" }}>
       <span aria-hidden className="text-sm leading-none">{meta.icon}</span>
       <span aria-hidden className="num" style={{ color: "var(--accent-ink)" }}>{timeLabel}</span>
     </span>
@@ -620,24 +702,61 @@ function TownBackground({ phase, hourFloat, milestones = [] }: { phase: TodPhase
   );
 }
 
-/* ——— HOME TOWN BAND (Glass Vault phase 1) ———
-   A fixed window into the SAME town at the bottom of Home: the same
-   TownBackground art, the same time-phase + seasonal state (the root
-   data-event filters apply to .town-bg inside the band too), scouts
-   present via the roaming layer above it. Page content scrolls above
-   the band; the band itself carries no text and no controls. The Town
-   PAGE (Scouts › Town) still renders TownBackground full-screen —
-   this band is a window into that place, not a replacement. */
-function TownBand({ phase, hourFloat, milestones = [] }: { phase: TodPhase; hourFloat: number; milestones?: { id: string; met: boolean }[] }) {
+/* ——— TOWN BACKDROP (Oct 13, owner model) ———
+   The town is the page backdrop on EVERY data surface: vapor sky
+   across the top of the viewport, the SAME TownBackground art
+   (same phase + seasonal state — the root data-event filters apply
+   to .town-bg inside the backdrop too) anchored to the bottom,
+   and a scrim over the content-dense zone so glass panels hold
+   their text pairings over the brightest town patches. The town
+   art stays CRISP — frosting is the panels' backdrop blur, never
+   a blur on the art. Content scrolls over the backdrop; the town
+   shows through the margins, the gaps between panels, and the
+   open bottom reveal at the foot of the page. The Town PAGE
+   (Scouts › Town) still renders TownBackground full-screen — the
+   backdrop is that place seen through the vault's glass, not a
+   second town. */
+function TownBackdrop({ phase, hourFloat, milestones = [] }: { phase: TodPhase; hourFloat: number; milestones?: { id: string; met: boolean }[] }) {
   return (
-    <div className="town-band" aria-hidden="true">
-      <TownBackground phase={phase} hourFloat={hourFloat} milestones={milestones} />
+    <div className="town-backdrop" aria-hidden="true">
+      <div className="backdrop-sky" />
+      <div className="backdrop-town">
+        <TownBackground phase={phase} hourFloat={hourFloat} milestones={milestones} />
+      </div>
+      <div className="backdrop-scrim" />
+      {/* HIG dimming layer (Oct 13, 2026): soft full-page vertical
+          vignette above the town art + scrim — the ~35% dark
+          treatment Apple's clear-glass rule asks for behind
+          chrome floating over bright backdrop phases. */}
+      <div className="backdrop-vignette" />
+    </div>
+  );
+}
+
+/* ——— EDGE SCRIMS (Oct 13, 2026 — owner: "gradients on top and
+   bottom to offset the readability") ———
+   Two fixed, pointer-events-none feathered gradients sitting ABOVE
+   the town backdrop layer and BELOW all content and chrome (z-index
+   between .town-backdrop and main): deep midnight violet-black at
+   strong alpha at the very top edge, feathering to transparent by
+   ~176px (behind the desktop top capsule and the page's top zone),
+   and the mirror at the bottom (transparent until the last ~200px,
+   strong at the edge, behind the mobile capsule / camera button
+   zone and the town vista's foot). They ground the vista and the
+   grounded scouts without swallowing them. Data surfaces only —
+   the Town PAGE keeps its full-screen art untouched (this never
+   renders there, exactly like TownBackdrop). */
+function EdgeScrims() {
+  return (
+    <div className="edge-scrims" aria-hidden="true">
+      <div className="edge-scrim-top" />
+      <div className="edge-scrim-bottom" />
     </div>
   );
 }
 
 /* ——— ROAMING SCOUTS — town space only, never over data ———
-   The owner's rule (Oct 8, 2026): scouts live in the TOWN, not on the data.
+   the owner's rule (Oct 8, 2026): scouts live in the TOWN, not on the data.
    Default roaming is confined to background / margin space — the grass,
    the page margins, the paths and the gaps between sections — and a
    scout must never cross over, hover on, or cover a data panel, table,
@@ -682,20 +801,52 @@ const PERSONALITY: Record<string, { speed: number; pauseMs: [number, number] }> 
 };
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 function firstSentence(s: string): string { const i = s.indexOf(". "); return i > 0 ? s.slice(0, i + 1) : s; }
-/* Parked spots (paused / reduced-motion): half-peeking at the page edges,
-   so a parked scout hugs the town margin instead of sitting on a panel. */
-const PARK_SPOTS: Record<string, { left: string; top: string }> = {
-  pikachu: { left: "-14px", top: "12%" },
-  eevee: { left: "-14px", top: "56%" },
-  gengar: { left: "calc(100% - 50px)", top: "26%" },
-  snorlax: { left: "calc(100% - 54px)", top: "74%" },
+/* Parked spots (paused / reduced-motion): the scouts stand ON THE
+   GROUND PLANE of the backdrop town at the foot of the viewport,
+   spread along it, feet just above the mobile capsule — never
+   floating mid-sky at the page edges (owner fix, Oct 13). Bottom
+   is applied as a style in the render; left spreads them out. */
+const PARK_SPOTS: Record<string, { left: string }> = {
+  pikachu: { left: "3%" },
+  eevee: { left: "27%" },
+  gengar: { left: "51%" },
+  snorlax: { left: "75%" },
 };
+const PARK_BOTTOM = 92;
 
-function FreeRoamingScouts({ scouts, pinnedByScout, sightingByScout }: { scouts: Scout[]; pinnedByScout: Map<string, Deal>; sightingByScout: Map<string, Deal> }) {
+/* ——— MOBILE-WIDTH GATE (Oct 13, 2026 — owner: "Let's remove
+   scouts in mobile") ———
+   True at phone widths (≤640px, the app's mobile breakpoint). The
+   data UI uses it to keep scout sprites and their controls from
+   MOUNTING at all on phones — no DOM, no rAF loop, no listeners —
+   rather than hiding mounted sprites with CSS (the GPU cost of
+   animating sprites over backdrop-blurred glass was part of the
+   rationale). Desktop widths are unaffected, and the Town PAGE
+   keeps its characters on both platforms: the town is the scouts'
+   home and that page is content, not chrome. */
+function useIsMobileWidth(): boolean {
+  const [mobile, setMobile] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)");
+    const apply = () => setMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  return mobile;
+}
+
+function FreeRoamingScouts({ scouts, pinnedByScout, sightingByScout, suppressed = false }: { scouts: Scout[]; pinnedByScout: Map<string, Deal>; sightingByScout: Map<string, Deal>; suppressed?: boolean }) {
   const walkerRefs = useRef(new Map<string, HTMLDivElement>());
   const flipRefs = useRef(new Map<string, HTMLDivElement>());
   const rigsRef = useRef(new Map<string, Rig>());
   const panelsRef = useRef<PanelRect[]>([]);
+  /* The roam zone (Oct 13): the ground band of the viewport — the
+     backdrop town's ground plane — widened to the full bottom
+     reveal whenever the reveal is on screen. Updated by the panel
+     scan. Roam targets are sampled inside it; a roaming sprite
+     found above it fades out until it is back on the ground. */
+  const zoneRef = useRef<{ top: number; bottom: number }>({ top: 0, bottom: 0 });
   const scurryQueueRef = useRef<string[]>([]);
   const prevPinsRef = useRef<Map<string, number> | null>(null);
   const nextPeekAtRef = useRef(0);
@@ -742,27 +893,58 @@ function FreeRoamingScouts({ scouts, pinnedByScout, sightingByScout }: { scouts:
         rects.push({ l: r.left - 5, t: r.top - 5, r: r.right + 5, b: r.bottom + 5 });
       });
       panelsRef.current = rects;
+      /* Roam zone: the viewport's ground band by default (feet
+         above the mobile capsule / FAB line); when the bottom
+         reveal is on screen, the zone opens up to the reveal's
+         full viewport span — the vista IS the roam space. */
+      const H = window.innerHeight;
+      let top = H - 216, bottom = H - 84;
+      const reveal = document.querySelector(".town-reveal");
+      if (reveal) {
+        const rr = reveal.getBoundingClientRect();
+        if (rr.bottom > 60 && rr.top < H - 40) {
+          top = Math.min(top, Math.max(0, rr.top + 8));
+          bottom = Math.max(bottom, Math.min(H - 8, rr.bottom - 8));
+        }
+      }
+      zoneRef.current = { top, bottom };
     };
     const boxHitsPanel = (x: number, y: number, w: number, h: number): boolean =>
       panelsRef.current.some(p => x < p.r && x + w > p.l && y < p.b && y + h > p.t);
     const isFree = (x: number, y: number, W: number, H: number): boolean =>
       x >= -2 && y >= -2 && x + SPRITE_W <= W + 2 && y + SPRITE_H <= H + 2 && !boxHitsPanel(x, y, SPRITE_W, SPRITE_H);
-    /* Rejection-sample a panel-free roam target: margin corridors first
-       (the town grass beside the centred content column), then anywhere. */
+    /* Rejection-sample a panel-free roam target INSIDE THE ROAM
+       ZONE (the ground band / bottom reveal — scouts live on the
+       town's ground plane, never up in the sky or over content).
+       The last tries fall back to the margin corridors of the zone
+       so a scout boxed in by panels still finds the grass beside
+       the content column. */
     const pickTarget = (W: number, H: number): { x: number; y: number } | null => {
+      const z = zoneRef.current.top > 0 || zoneRef.current.bottom > 0 ? zoneRef.current : { top: H - 216, bottom: H - 84 };
+      const yLo = Math.max(0, z.top);
+      const yHi = Math.max(yLo + 1, Math.min(H - SPRITE_H - 4, z.bottom - SPRITE_H));
       const margin = Math.max(0, (W - Math.min(W, 1280)) / 2 - 8);
       for (let i = 0; i < 16; i++) {
         let x: number, y: number;
-        if (i < 7 && margin > SPRITE_W * 0.6) {
+        if (i < 11) {
+          x = rand(2, Math.max(3, W - SPRITE_W - 2)); y = rand(yLo, yHi);
+        } else if (margin > SPRITE_W * 0.6) {
           const leftSide = Math.random() < 0.5;
           x = leftSide ? rand(2, Math.max(3, margin - SPRITE_W)) : rand(W - margin + 2, Math.max(W - margin + 3, W - SPRITE_W - 2));
-          y = rand(46, Math.max(47, H - SPRITE_H - 60));
-        } else if (i < 11) {
-          x = rand(2, Math.max(3, W - SPRITE_W - 2)); y = rand(46, Math.max(47, H - SPRITE_H - 60));
+          y = rand(yLo, yHi);
         } else {
-          x = rand(2, Math.max(3, W - SPRITE_W - 2)); y = rand(2, Math.max(3, H - SPRITE_H - 40));
+          x = rand(2, Math.max(3, W - SPRITE_W - 2)); y = rand(yLo, yHi);
         }
-        if (isFree(x, y, W, H)) return { x, y };
+        if (!isFree(x, y, W, H)) continue;
+        /* Separation: scouts never stack on each other — a target
+           too close to another scout's body or destination is
+           rejected, so the team spreads along the ground instead
+           of piling into the same free margin cell. */
+        let crowded = false;
+        for (const other of rigsRef.current.values()) {
+          if ((Math.abs(other.x - x) < 92 && Math.abs(other.y - y) < 68) || (Math.abs(other.tx - x) < 92 && Math.abs(other.ty - y) < 68)) { crowded = true; break; }
+        }
+        if (!crowded) return { x, y };
       }
       return null;
     };
@@ -797,9 +979,13 @@ function FreeRoamingScouts({ scouts, pinnedByScout, sightingByScout }: { scouts:
           const leftEdge = peekIdxRef.current % 2 === 0;
           rig.mode = "peek"; rig.modeUntil = now + 4000; rig.goneUntil = 0;
           rig.x = leftEdge ? -SPRITE_W * 0.42 : W - SPRITE_W * 0.58;
-          /* Prefer a peek height whose (clamped) box is panel-free */
-          let py = H * rand(0.3, 0.6);
-          for (let i = 0; i < 10; i++) { const cand = rand(60, Math.max(61, H - SPRITE_H - 40)); if (!boxHitsPanel(Math.max(0, rig.x), cand, SPRITE_W, SPRITE_H)) { py = cand; break; } }
+          /* Peeks happen at the GROUND line (the roam zone), at the
+             page edge — never mid-sky. Prefer a ground height whose
+             (clamped) box is panel-free. */
+          const z = zoneRef.current;
+          const zLo = Math.max(0, z.top), zHi = Math.max(zLo + 1, Math.min(H - SPRITE_H - 4, z.bottom - SPRITE_H));
+          let py = rand(zLo, zHi);
+          for (let i = 0; i < 10; i++) { const cand = rand(zLo, zHi); if (!boxHitsPanel(Math.max(0, rig.x), cand, SPRITE_W, SPRITE_H)) { py = cand; break; } }
           rig.y = py; rig.tx = rig.x; rig.ty = rig.y;
         }
       }
@@ -901,13 +1087,31 @@ function FreeRoamingScouts({ scouts, pinnedByScout, sightingByScout }: { scouts:
           if (boxHitsPanel(rig.x, rig.y, SPRITE_W, SPRITE_H)) {
             targetOpacity = Math.min(targetOpacity, 0.18);
           }
+          /* Ground law (Oct 13): a ROAMING sprite found above the
+             roam zone (e.g. after a layout shift) fades out until it
+             walks back down to the town's ground plane — sprites
+             never float over empty sky. Event modes (scurry /
+             return) are travelling and exempt. */
+          if (rig.mode === "roam" && zoneRef.current.top > 0 && rig.y < zoneRef.current.top - 24) {
+            targetOpacity = Math.min(targetOpacity, 0);
+          }
         }
 
         /* ——— Bubbles: only in free town space, on a pin celebration, or
            during an edge peek. Sparse while roaming (every ~26–48s per
            scout, ~3.6s each). Written via dataset — CSS shows/hides. ——— */
         let bubble = false;
-        if (rig.mode === "celebrate" || rig.mode === "peek") bubble = true;
+        if (rig.mode === "celebrate" || rig.mode === "peek") {
+          /* Floating-chrome rule (owner, Oct 14): even a celebration
+             / peek bubble never renders across panel body text or
+             off the viewport edge — when its clamped in-viewport box
+             would cover a panel, the bubble is suppressed (the
+             celebration animation itself still plays). */
+          const bw = pinnedByScout.has(s.scoutId) ? 240 : 210;
+          const bcx = rig.x + SPRITE_W / 2;
+          const bShift = bcx < 132 ? 132 - bcx : bcx > W - 132 ? W - 132 - bcx : 0;
+          bubble = !boxHitsPanel(bcx + bShift - bw / 2, rig.y - 66, bw, 60);
+        }
         else if (rig.mode === "roam" && targetOpacity > 0.5) {
           if (now >= rig.nextBubbleAt && rig.bubbleUntil === 0) { rig.bubbleUntil = now + 3600; rig.nextBubbleAt = now + rand(26000, 48000); }
           if (rig.bubbleUntil !== 0 && now < rig.bubbleUntil) {
@@ -920,7 +1124,7 @@ function FreeRoamingScouts({ scouts, pinnedByScout, sightingByScout }: { scouts:
         el.dataset.celebrate = rig.mode === "celebrate" ? "1" : "0";
         el.style.opacity = String(targetOpacity);
         el.style.transform = `translate(${rig.x.toFixed(1)}px, ${rig.y.toFixed(1)}px)`;
-        const cx = rig.x + SPRITE_W / 2, half = Math.min(122, W * 0.32);
+        const cx = rig.x + SPRITE_W / 2, half = Math.min(132, W * 0.42);
         let shift = 0;
         if (cx < half) shift = half - cx; else if (cx > W - half) shift = W - half - cx;
         el.style.setProperty("--bubble-x", shift.toFixed(0) + "px");
@@ -938,17 +1142,17 @@ function FreeRoamingScouts({ scouts, pinnedByScout, sightingByScout }: { scouts:
 
   return (
     <>
-      {mode !== "hidden" && (
-        <div className="roam-layer" role="group" aria-label="Scout team roaming the town margins — they keep off the data panels, and scurry to the top only to pin a find">
+      {mode !== "hidden" && !suppressed && (
+        <div className="roam-layer" role="group" aria-label="Scout team roaming the town ground at the foot of the page — they keep off the data panels, and scurry to the top only to pin a find">
           {scouts.map(s => {
             const pinned = pinnedByScout.get(s.scoutId);
             const sighting = sightingByScout.get(s.scoutId);
             const color = SCOUT_COLORS[s.scoutId] ?? "var(--accent)";
-            const park = PARK_SPOTS[s.scoutId] ?? { left: "10%", top: "20%" };
+            const park = PARK_SPOTS[s.scoutId] ?? { left: "10%" };
             return (
               <div key={s.scoutId} className="scout-walker" data-personality={s.scoutId === "pikachu" ? "dart" : s.scoutId === "gengar" ? "drift" : s.scoutId === "snorlax" ? "nap" : "trot"} data-celebrate="0" data-bubble="0"
                 ref={el => { if (el) walkerRefs.current.set(s.scoutId, el); else walkerRefs.current.delete(s.scoutId); }}
-                style={parked ? { transform: `translate(0px, 0px)`, left: park.left, top: park.top, opacity: 0.92 } : { transform: "translate(20px, 120px)", opacity: 0, transition: "opacity 0.5s ease" }}>
+                style={parked ? { transform: `translate(0px, 0px)`, left: park.left, top: "auto", bottom: PARK_BOTTOM, opacity: 0.92 } : { transform: "translate(20px, 120px)", opacity: 0, transition: "opacity 0.5s ease" }}>
                 {/* Bubble visibility is driven by the roam loop via
                     data-bubble: free town space, pin celebration, or edge
                     peek only — never over data. Parked scouts don't bubble
@@ -977,6 +1181,7 @@ function FreeRoamingScouts({ scouts, pinnedByScout, sightingByScout }: { scouts:
           })}
         </div>
       )}
+      {!suppressed && (
       <div className="roam-toggle" role="group" aria-label="Scout roaming controls">
         {mode === "hidden"
           ? <button aria-label="Show roaming scouts" onClick={() => setMode("roam")}>🐾 Show scouts</button>
@@ -985,25 +1190,31 @@ function FreeRoamingScouts({ scouts, pinnedByScout, sightingByScout }: { scouts:
               <button aria-label="Hide roaming scouts" onClick={() => setMode("hidden")}>Hide scouts</button>
             </>}
       </div>
+      )}
     </>
   );
 }
 
-/* ——— Chart series: real dated evidence only, sources captioned per chart ——— */
-
+/* ——— Chart series ———
+   The hardcoded per-card series that used to live here (Ditto's
+   hand-built points, the borrowed "category example" series plotted
+   on Giratina's page, Mega Gengar's aggregator raw trend) are
+   DELETED (owner, Oct 13): detail charts now plot ONLY the card's
+   own classified verified sold comps from sales evidence, built at
+   render time — no borrowed series anywhere. */
 const MOMENTUM_SERIES = [
   { name: "Crystal", move: 23.1 },
   { name: "Gold Star", move: 22.6 },
   { name: "EX-era ex", move: 19.1 },
   { name: "LV.X", move: 13.5 },
 ];
-/* Chart chrome (design pass, Oct 13 — remedy #10): axis ticks and
-   Recharts tooltips are theme-aware via the --chart-tick / --tooltip-*
-   tokens in theme.css. The old fixed tick #a39d8f measured 2.64:1 on
-   Day Vapor panels and the Momentum axis #f2efe8 measured 1.12:1;
-   tooltips paired a near-black ground with var(--text), which is
-   deep violet in Day Vapor (1.06:1). New pairs: ticks 10.46:1 (Night)
-   / 7.96:1 (Day) on the panel surface; tooltips 15.01:1 / 15.80:1. */
+/* Chart chrome (design pass, Oct 13 — remedy #10; Night-only since
+   the permanent Night Vapor lock, Oct 13, 2026): axis ticks and
+   Recharts tooltips resolve through the --chart-tick / --tooltip-*
+   tokens in theme.css, which now only ever carry the Night Vapor
+   values. The old fixed tick #a39d8f measured 2.64:1 on light panels
+   and the Momentum axis #f2efe8 measured 1.12:1. Night pairs: ticks
+   #cfc4ec = 10.46:1 on the panel surface; tooltips 15.01:1. */
 const CHART_TOOLTIP_STYLE = { background: "var(--tooltip-bg)", border: "1px solid var(--tooltip-border)", borderRadius: 10, color: "var(--tooltip-text)" } as const;
 const CHART_TOOLTIP_TEXT = { color: "var(--tooltip-text)" } as const;
 
@@ -1030,7 +1241,7 @@ function RocketIntelBlock({ points, severity }: { points: string[]; severity: nu
 function CommitteeCard({ rec }: { rec: { score: number; verdict: string; bull: string; bear: string; liquidity: string; rationale: string; createdAt: string } }) {
   const vColor = rec.verdict === "BUY-lean" ? "var(--hold)" : rec.verdict === "WATCH" ? "var(--trim)" : "var(--sell)";
   return (
-    <details className="mt-3 rounded-xl px-3 py-2.5" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
+    <details className="mt-3 rounded-xl px-3 py-2.5" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
       <summary className="cursor-pointer text-sm font-semibold min-h-[44px]" aria-label={`Investment Committee verdict ${rec.verdict}, score ${rec.score} of 100. Activate to expand the full debate.`}>
         🏛 Investment Committee: <span style={{ color: vColor }}>{rec.verdict}</span> <span className="num">· {rec.score}/100</span>
         <span className="block text-xs font-normal mt-0.5" style={{ color: "var(--dim)" }}>{rec.rationale} <span style={{ color: "var(--faint)" }}>(recorded {rec.createdAt} · expand for bull / bear / liquidity)</span></span>
@@ -1039,7 +1250,7 @@ function CommitteeCard({ rec }: { rec: { score: number; verdict: string; bull: s
         <p><strong style={{ color: "var(--hold)" }}>Bull:</strong> {rec.bull}</p>
         <p><strong style={{ color: "var(--sell)" }}>Bear (Rocket):</strong> {rec.bear}</p>
         <p><strong style={{ color: "var(--text)" }}>Liquidity (Snorlax):</strong> {rec.liquidity}</p>
-        <p className="text-[11px]" style={{ color: "var(--faint)" }}>Records persist so verdicts can be graded against outcomes later (with the Paper League). Deterministic score from discount, tier, market thinness, pump level, Rocket objections, sales volume and seller presence.</p>
+        <p className="text-[11px]" style={{ color: "var(--faint)" }}>Records persist so verdicts can be graded against outcomes later. Deterministic score from discount, tier, market thinness, pump level, Rocket objections, sales volume and seller presence.</p>
       </div>
     </details>
   );
@@ -1112,38 +1323,80 @@ function GradedSlabVisual({ card }: { card: Card }) {
   );
 }
 function GradedSlab({ card, fanIndex, onOpen }: { card: Card; fanIndex?: number; onOpen: () => void }) {
+  const ref = useRef<HTMLButtonElement | null>(null);
+  /* FAN HOVER MICRO-INTERACTION (owner, Oct 13): the same holo-tilt
+     family as the detail slab — pointer-tracked rotation on the
+     mouse axis, composed in CSS with the fan pose plus a slight
+     grow (--fsc) and the sheen sweep; eases back to rest on leave.
+     Mouse pointers only — touch taps navigate untouched — and
+     prefers-reduced-motion disables it here and in CSS. */
+  const fanTilt = (e: { pointerType: string; clientX: number; clientY: number }) => {
+    if (e.pointerType !== "mouse") return;
+    if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const el = ref.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const px = Math.max(0, Math.min(1, (e.clientX - r.left) / Math.max(1, r.width)));
+    const py = Math.max(0, Math.min(1, (e.clientY - r.top) / Math.max(1, r.height)));
+    el.style.setProperty("--fry", `${((px - 0.5) * 11).toFixed(1)}deg`);
+    el.style.setProperty("--frx", `${((0.5 - py) * 11).toFixed(1)}deg`);
+    el.style.setProperty("--mx", `${(px * 100).toFixed(0)}%`);
+    el.style.setProperty("--my", `${(py * 100).toFixed(0)}%`);
+  };
+  const fanRest = () => { const el = ref.current; if (!el) return; el.style.setProperty("--frx", "0deg"); el.style.setProperty("--fry", "0deg"); el.style.setProperty("--mx", "50%"); el.style.setProperty("--my", "38%"); };
   return (
-    <button type="button" onClick={onOpen} aria-label={`Open detail page for ${card.name} — ${card.grader} ${card.grade}`} className={`gslab${fanIndex != null ? ` fan-${fanIndex}` : ""}`}>
+    <button type="button" ref={ref} onClick={onOpen} onPointerMove={fanTilt} onPointerLeave={fanRest} aria-label={`Open detail page for ${card.name} — ${card.grader} ${card.grade}`} className={`gslab${fanIndex != null ? ` fan-${fanIndex}` : ""}`}>
       <GradedSlabVisual card={card} />
     </button>
   );
 }
 
-/* Holo-tilt slab viewer (round 4): presentational only. Pointer move
-   tilts on desktop; deviceorientation (with the iOS permission prompt
-   handled by an explicit button) tilts on mobile. All motion writes go
-   to CSS vars on a ref — no React state per frame. Reduced-motion (or
-   no sensor) keeps a static sheen. aria-hidden: every fact on the slab
-   face is repeated in the detail's text and stat tiles right below. */
+/* Holo-tilt slab viewer: presentational only, and ALWAYS ON with
+   no UI (owner, Oct 13) — no toggle, no hint text anywhere on the
+   detail page; it just works. Pointer move tilts on desktop;
+   deviceorientation tilts on mobile by default. Where the OS gates
+   motion behind a permission (iOS), the first natural tap on the
+   slab itself is the granting gesture — silent, no button, no
+   message; denied/unavailable simply leaves the slab at rest. All
+   motion writes go to CSS vars on a ref — no React state per frame.
+   Reduced-motion keeps a static sheen, silently. aria-hidden: every
+   fact on the slab face is repeated in the detail's text and stat
+   tiles right below. */
 function HoloSlab({ card, reduced }: { card: Card; reduced: boolean }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [tiltOn, setTiltOn] = useState(false);
+  const askedRef = useRef(false);
   const doe = typeof window !== "undefined" ? (window as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } }).DeviceOrientationEvent : undefined;
   const needsPermission = !!doe && typeof doe.requestPermission === "function";
+  /* iOS PERMISSION PERSISTENCE (owner check, Oct 13): the gesture-
+     gated request fires from the first tap on the slab — there is no
+     default-on without it on iOS. The OUTCOME is persisted so later
+     visits just work: a stored "granted" starts orientation
+     listening on mount with no gesture at all (Safari keeps the
+     origin's grant; events flow), a stored "denied" means
+     requestPermission is never called again — no nagging, ever; the
+     slab rests static and pointer sheen is unaffected. Storage
+     failures (sandboxed frames) fall back to per-visit behavior. */
+  const storedMotion = (() => { try { return window.localStorage.getItem("holo-motion-permission"); } catch { return null; } })();
+  const [oriOn, setOriOn] = useState(!needsPermission || storedMotion === "granted");
   useEffect(() => {
-    if (!tiltOn || reduced) return;
+    if (!oriOn || reduced) return;
     const onOri = (e: DeviceOrientationEvent) => {
       const el = ref.current; if (!el) return;
       const gx = Math.max(-16, Math.min(16, e.gamma ?? 0));
       const by = Math.max(-16, Math.min(16, (e.beta ?? 45) - 45));
-      el.style.setProperty("--rx", `${(-by * 0.65).toFixed(1)}deg`);
-      el.style.setProperty("--ry", `${(gx * 0.65).toFixed(1)}deg`);
-      el.style.setProperty("--mx", `${50 + gx * 2.2}%`);
-      el.style.setProperty("--my", `${50 + by * 2.2}%`);
+      /* GYRO GLARE (owner, Oct 13): orientation drives the LIGHT,
+         not the pose — the glare highlight sweeps wide across the
+         case and brightens with tilt magnitude, the holo layer
+         shifts under it, and the physical rotation stays minimal
+         (≤ ~2°) so the slab reads as lit, not tipped. */
+      el.style.setProperty("--rx", `${(-by * 0.12).toFixed(1)}deg`);
+      el.style.setProperty("--ry", `${(gx * 0.12).toFixed(1)}deg`);
+      el.style.setProperty("--mx", `${50 + gx * 3}%`);
+      el.style.setProperty("--my", `${50 + by * 3}%`);
+      el.style.setProperty("--glare-o", (0.4 + Math.min(0.5, (Math.abs(gx) + Math.abs(by)) / 36)).toFixed(2));
     };
     window.addEventListener("deviceorientation", onOri);
     return () => window.removeEventListener("deviceorientation", onOri);
-  }, [tiltOn, reduced]);
+  }, [oriOn, reduced]);
   const setFromPoint = (clientX: number, clientY: number) => {
     if (reduced) return;
     const el = ref.current; if (!el) return;
@@ -1155,14 +1408,22 @@ function HoloSlab({ card, reduced }: { card: Card; reduced: boolean }) {
     el.style.setProperty("--mx", `${(px * 100).toFixed(0)}%`);
     el.style.setProperty("--my", `${(py * 100).toFixed(0)}%`);
   };
-  const reset = () => { const el = ref.current; if (!el) return; el.style.setProperty("--rx", "0deg"); el.style.setProperty("--ry", "0deg"); el.style.setProperty("--mx", "50%"); el.style.setProperty("--my", "38%"); };
-  const enableTilt = async () => {
-    if (needsPermission && doe?.requestPermission) {
-      try { const res = await doe.requestPermission(); if (res === "granted") setTiltOn(true); } catch { /* permission denied/unavailable — static sheen stays */ }
-    } else setTiltOn(true);
+  const reset = () => { const el = ref.current; if (!el) return; el.style.setProperty("--rx", "0deg"); el.style.setProperty("--ry", "0deg"); el.style.setProperty("--mx", "50%"); el.style.setProperty("--my", "38%"); el.style.setProperty("--glare-o", "0.55"); };
+  /* iOS motion permission, silently: the first tap on the slab is
+     the user gesture the OS requires. No label, no button, no
+     message — if it is denied or unavailable the slab just rests. */
+  const askMotion = async () => {
+    if (!needsPermission || oriOn || askedRef.current || !doe?.requestPermission) return;
+    if (storedMotion === "denied" || storedMotion === "granted") return; /* outcome already settled on an earlier visit — never re-ask */
+    askedRef.current = true;
+    try {
+      const res = await doe.requestPermission();
+      try { window.localStorage.setItem("holo-motion-permission", res === "granted" ? "granted" : "denied"); } catch { /* storage unavailable — per-visit behavior only */ }
+      if (res === "granted") setOriOn(true);
+    } catch { /* denied/unavailable — static, silently */ }
   };
   return (
-    <div>
+    <div className="holo-bleed">
       {/* PHASE 2 DETAIL REWORK (owner): NO dark stage. The slab renders
           directly on the sky surface — just the case and its own soft
           shadow, left-aligned at its natural ~300px width. The tilt
@@ -1172,19 +1433,14 @@ function HoloSlab({ card, reduced }: { card: Card; reduced: boolean }) {
           set/# window) — the old dark-stage text fallback (grader chip
           + name + cert + value printed on a backdrop) is gone; cert
           and value live in the detail's kicker/meta and value tiles. */}
-      <div style={{ perspective: "900px", width: "min(300px, 100%)" }}>
-        <div ref={ref} aria-hidden="true" onPointerMove={e => setFromPoint(e.clientX, e.clientY)} onPointerLeave={reset} className="holo-slab gslab select-none"
+      <div className="holo-persp" style={{ perspective: "900px" }}>
+        <div ref={ref} aria-hidden="true" onPointerMove={e => setFromPoint(e.clientX, e.clientY)} onPointerLeave={reset} onPointerDown={() => { void askMotion(); }} className="holo-slab gslab select-none"
           style={{ transform: "rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg))", cursor: "default", ["--mx" as string]: "50%", ["--my" as string]: "38%" }}>
           <GradedSlabVisual card={card} />
-          <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 3, borderRadius: "inherit", background: "radial-gradient(420px circle at var(--mx) var(--my), rgba(255,255,255,0.30), transparent 46%)", pointerEvents: "none" }} />
-          <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 3, borderRadius: "inherit", background: "linear-gradient(115deg, transparent 30%, rgba(255,113,206,0.10) 45%, rgba(1,205,254,0.14) 55%, transparent 70%)", pointerEvents: "none" }} />
+          <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 3, borderRadius: "inherit", background: "radial-gradient(420px circle at var(--mx) var(--my), rgba(255,255,255,0.30), transparent 46%)", opacity: "var(--glare-o, 0.55)", pointerEvents: "none" }} />
+          <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 3, borderRadius: "inherit", background: "linear-gradient(115deg, transparent 30%, rgba(255,113,206,0.10) 45%, rgba(1,205,254,0.14) 55%, transparent 70%)", backgroundSize: "220% 220%", backgroundPosition: "var(--mx) var(--my)", pointerEvents: "none" }} />
         </div>
       </div>
-      <p className="text-[11px] mt-2 flex flex-wrap items-center gap-2" style={{ color: "var(--faint)" }}>
-        <span>Holofoil slab preview — move your pointer{tiltOn ? " or tilt your device" : ""} across it. Purely presentational; all figures live in the text alongside.</span>
-        {!reduced && !tiltOn && (needsPermission || (typeof window !== "undefined" && "DeviceOrientationEvent" in window)) && <button onClick={enableTilt} aria-label="Enable device tilt for the holofoil slab preview" className="rounded-full px-3 py-1.5 text-[11px] font-bold border" style={{ borderColor: "var(--border)", color: "var(--accent-ink)" }}>Enable tilt 📱</button>}
-        {tiltOn && <span style={{ color: "var(--hold)" }}>Tilt on ✓</span>}
-      </p>
     </div>
   );
 }
@@ -1252,11 +1508,12 @@ function decisionFor(card: Card, ctx: { verifiedSales: number; changePct: number
   return { pros, cons };
 }
 
-function ExitDraftCard({ draft, onUpdate }: { draft: ExitDraft; onUpdate: (args: { id: number; status: "draft" | "listed" | "sold"; salePrice?: number | null; soldDate?: string | null }) => void }) {
+function ExitDraftCard({ draft, onUpdate, onDelete }: { draft: ExitDraft; onUpdate: (args: { id: number; status: "draft" | "listed" | "sold"; salePrice?: number | null; soldDate?: string | null }) => void; onDelete: (args: { id: number }) => void }) {
   const [price, setPrice] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const checklist = ["Front of slab — straight on, no glare", "Back of slab", "Cert number close-up", "Holo / surface angle shot", "Edges & corners detail", "Any flaw — photographed honestly"];
   return (
-    <article className="rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
+    <article className="rounded-2xl p-4" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
       <p className="font-semibold leading-snug">{draft.title}</p>
       <p className="text-xs mt-1" style={{ color: "var(--dim)" }}>Status: <strong style={{ color: "var(--text)" }}>{draft.status}</strong> · Suggested price: <strong className="num">{fmt(draft.suggestedPrice)}</strong> <span>({draft.priceSource})</span></p>
       <p className="text-sm mt-2 leading-relaxed whitespace-pre-wrap" style={{ color: "var(--dim)" }}>{draft.description}</p>
@@ -1271,6 +1528,21 @@ function ExitDraftCard({ draft, onUpdate }: { draft: ExitDraft; onUpdate: (args:
           <button onClick={() => { const n = Number(price); if (!isNaN(n) && n > 0) onUpdate({ id: draft.id, status: "sold", salePrice: n }); }} aria-label={`Mark ${draft.cardName} as sold`} className="touch-target rounded-full px-4 py-2 text-sm font-bold" style={{ background: "var(--hold)", color: "var(--ink-on-fill)" }}>Mark sold</button>
         </div>
       )}
+      {/* Delete draft (owner, Oct 13): quiet danger text button with
+          a one-step INLINE confirmation on the control itself — no
+          modal. Deleting removes the draft record only; the card
+          can draft again (deletion is not a pass). */}
+      <div className="mt-3 flex flex-wrap items-center gap-2" style={{ borderTop: "1px solid var(--hairline)", paddingTop: "10px" }}>
+        {confirmingDelete ? (
+          <>
+            <span className="text-sm font-semibold" style={{ color: "var(--sell)" }}>Delete this draft?</span>
+            <button onClick={() => onDelete({ id: draft.id })} aria-label={`Confirm delete of the ${draft.cardName} exit draft`} className="touch-target rounded-full px-4 py-2 text-sm font-bold" style={{ background: "var(--sell)", color: "#ffffff" }}>Delete</button>
+            <button onClick={() => setConfirmingDelete(false)} aria-label={`Cancel deleting the ${draft.cardName} exit draft`} className="touch-target rounded-full px-4 py-2 text-sm font-bold border" style={{ borderColor: "var(--border)", color: "var(--dim)" }}>Cancel</button>
+          </>
+        ) : (
+          <button onClick={() => setConfirmingDelete(true)} aria-label={`Delete the ${draft.cardName} exit draft`} className="touch-target rounded-full px-3 py-2 text-sm font-bold" style={{ color: "var(--sell)" }}>Delete draft</button>
+        )}
+      </div>
     </article>
   );
 }
@@ -1283,6 +1555,7 @@ function ExitDraftCard({ draft, onUpdate }: { draft: ExitDraft; onUpdate: (args:
    optional note, optional date). Editing and clearing supported.
    Nothing is ever pre-filled or estimated: the owner's vault CSV cost
    column was blank, so a cost exists only when he types one in. ——— */
+
 function CardCostBlock({ card, onSave, saving }: { card: Card; onSave: (args: { cert: string; costUsd: number | null; note?: string | null; date?: string | null }) => void; saving: boolean }) {
   const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState("");
@@ -1306,7 +1579,7 @@ function CardCostBlock({ card, onSave, saving }: { card: Card; onSave: (args: { 
   const inputCls = "touch-target rounded-full px-4 py-2 text-sm outline-none w-full min-w-0";
   const inputStyle = { border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" } as const;
   return (
-    <div className="mt-4 rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }} role="group" aria-label={`Cost basis for ${card.name}`}>
+    <div className="quiet-panel mt-4 p-4 sm:p-5" role="group" aria-label={`Cost basis for ${card.name}`}>
       <p className="kicker" style={{ color: "var(--faint)" }}>💰 Cost basis — what you paid</p>
       {hasCost && !editing && (
         <div className="mt-3 grid gap-2 text-sm">
@@ -1358,6 +1631,195 @@ function CardCostBlock({ card, onSave, saving }: { card: Card; onSave: (args: { 
   );
 }
 
+/* ——— Owner management (Oct 14, 2026 — spec Q/R) ———
+   Watch accrual line: current reference + source type + last checked +
+   distance to max-buy + honest change state. Points are the recorded
+   watch_price_points for the item; nothing here invents a figure. */
+type WatchPointLike = { priceUsd: number; sourceType: string; recordedOn: string };
+/* Effective max-buy for display math: the structured column first,
+   then the figures the legacy rows carry in their text / rule. */
+function maxBuyOf(w: WatchItem): number | null {
+  if (w.maxBuyUsd != null) return w.maxBuyUsd;
+  const m = (w.priceContext ?? "").match(/max buy \$([\d,]+)/i) ?? w.actionRule.match(/at or under \$([\d,]+)/i) ?? w.actionRule.match(/under \$([\d,]+)/i);
+  return m ? Number(m[1]!.replace(/,/g, "")) : null;
+}
+function WatchAccrualLine({ points, maxBuyUsd }: { points: WatchPointLike[]; maxBuyUsd: number | null }) {
+  if (!points.length) {
+    return <p className="mt-2 text-[11px] font-semibold" style={{ color: "var(--faint)" }}>No reference yet — accruing · points record from the next sourced check</p>;
+  }
+  const sorted = [...points].sort((a, b) => a.recordedOn.localeCompare(b.recordedOn));
+  const first = sorted[0]!; const last = sorted[sorted.length - 1]!;
+  const dist = maxBuyUsd != null && maxBuyUsd > 0 ? ((last.priceUsd - maxBuyUsd) / maxBuyUsd) * 100 : null;
+  const spanDays = Math.round((new Date(last.recordedOn + "T00:00:00").getTime() - new Date(first.recordedOn + "T00:00:00").getTime()) / 86400000);
+  const change = sorted.length >= 2 && first.priceUsd > 0 ? ((last.priceUsd - first.priceUsd) / first.priceUsd) * 100 : null;
+  return (
+    <div className="mt-2.5 flex flex-wrap gap-x-6 gap-y-2">
+      <div><p className="text-[10px] font-bold tracking-widest" style={{ color: "var(--faint)" }}>CURRENT REFERENCE{last.sourceType ? ` · ${last.sourceType.toUpperCase().slice(0, 42)}` : ""}</p>
+      <p className="num text-sm font-semibold">{fmt(last.priceUsd)} <span className="text-[11px] font-normal" style={{ color: "var(--faint)" }}>· checked {last.recordedOn}</span></p></div>
+      {dist != null && <div><p className="text-[10px] font-bold tracking-widest" style={{ color: "var(--faint)" }}>VS MAX-BUY</p><p className="num text-sm font-semibold" style={{ color: dist <= 0 ? "var(--hold)" : "var(--sell)" }}>{dist <= 0 ? `${Math.abs(dist).toFixed(1)}% under` : `${dist.toFixed(1)}% over`}</p></div>}
+      <div><p className="text-[10px] font-bold tracking-widest" style={{ color: "var(--faint)" }}>CHANGE</p>
+      {change != null
+        ? <p className="num text-sm font-semibold">{change >= 0 ? "+" : ""}{change.toFixed(1)}% <span className="text-[11px] font-normal" style={{ color: "var(--faint)" }}>{spanDays >= 30 ? `over ${spanDays}d (${first.recordedOn} → ${last.recordedOn})` : `since ${first.recordedOn} · 30d window still accruing`}</span></p>
+        : <p className="text-sm font-semibold" style={{ color: "var(--dim)" }}>Accruing since {first.recordedOn} <span className="text-[11px] font-normal" style={{ color: "var(--faint)" }}>· one point on file</span></p>}
+      </div>
+    </div>
+  );
+}
+
+/* Per-item owner controls: edit max-buy inline, remove with an explicit
+   confirm step. Removal hides the item everywhere and stops its scout. */
+function WatchManageControls({ w, busy, onSaveMaxBuy, onRemove }: { w: WatchItem; busy: boolean; onSaveMaxBuy: (id: number, maxBuy: number) => void; onRemove: (id: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [mb, setMb] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const inputCls = "touch-target rounded-full px-4 py-2 text-sm outline-none w-full min-w-0";
+  const inputStyle = { border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" } as const;
+  return (
+    <div className="mt-3" style={{ borderTop: "1px solid var(--hairline)", paddingTop: "10px" }}>
+      {!editing && !confirming && (
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => { const cur = maxBuyOf(w); setMb(cur != null ? String(cur) : ""); setEditing(true); }} disabled={busy} aria-label={`Edit max buy for ${w.name}`} className="touch-target rounded-full px-4 py-2 text-xs font-bold border disabled:opacity-50" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)" }}>{`✎ Max-buy${maxBuyOf(w) != null ? `: ${fmt(maxBuyOf(w))}` : ""}`}</button>
+          <button onClick={() => setConfirming(true)} disabled={busy} aria-label={`Remove ${w.name} from the watchlist`} className="touch-target rounded-full px-4 py-2 text-xs font-bold border disabled:opacity-50" style={{ borderColor: "var(--hairline)", color: "var(--dim)" }}>Remove</button>
+        </div>
+      )}
+      {editing && (
+        <form className="flex flex-wrap items-end gap-2" onSubmit={e => { e.preventDefault(); const n = Number(mb); if (!isNaN(n) && n > 0) { onSaveMaxBuy(w.id, n); setEditing(false); } }}>
+          <label className="grid gap-1 text-xs font-bold flex-1 min-w-[140px]" style={{ color: "var(--dim)" }}>Max buy (USD)
+            <input aria-label={`New max buy for ${w.name} in US dollars`} value={mb} onChange={e => setMb(e.target.value)} inputMode="decimal" placeholder="e.g. 120" className={inputCls} style={inputStyle} />
+          </label>
+          <button type="submit" disabled={busy || mb.trim() === "" || isNaN(Number(mb)) || Number(mb) <= 0} aria-label={`Save max buy for ${w.name}`} className="touch-target rounded-full px-4 py-2 text-sm font-bold disabled:opacity-50" style={{ background: "var(--hold)", color: "var(--ink-on-fill)" }}>Save</button>
+          <button type="button" onClick={() => setEditing(false)} disabled={busy} aria-label="Cancel max buy edit" className="touch-target rounded-full px-4 py-2 text-sm font-bold border disabled:opacity-50" style={{ borderColor: "var(--hairline)", color: "var(--dim)" }}>Cancel</button>
+        </form>
+      )}
+      {confirming && (
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Confirm removal of ${w.name}`}>
+          <p className="text-xs font-semibold" style={{ color: "var(--dim)" }}>Remove this target? It leaves the page and its scout stops hunting it. The record is kept — nothing is hard-deleted.</p>
+          <button onClick={() => onRemove(w.id)} disabled={busy} aria-label={`Confirm removal of ${w.name}`} className="touch-target rounded-full px-4 py-2 text-xs font-bold disabled:opacity-50" style={{ background: "var(--sell)", color: "#fff" }}>Yes, remove</button>
+          <button onClick={() => setConfirming(false)} disabled={busy} aria-label="Cancel removal" className="touch-target rounded-full px-4 py-2 text-xs font-bold border disabled:opacity-50" style={{ borderColor: "var(--hairline)", color: "var(--dim)" }}>Cancel</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Add-a-watch-target form (spec Q.1). The optional reference is filed as
+   the item's first dated price point only when the owner supplies one
+   with its source — otherwise the item starts in the accruing state. */
+function AddWatchForm({ busy, onSubmit }: { busy: boolean; onSubmit: (args: { name: string; setName?: string; cardNumber?: string; intent?: "raw" | "graded"; gradeLabel?: string; maxBuyUsd?: number; referenceUsd?: number; referenceSource?: string }) => void }) {
+  const [name, setName] = useState(""); const [setField, setSetField] = useState(""); const [number, setNumber] = useState("");
+  const [intent, setIntent] = useState<"raw" | "graded">("raw"); const [grade, setGrade] = useState("");
+  const [maxBuy, setMaxBuy] = useState(""); const [ref, setRef] = useState(""); const [refSource, setRefSource] = useState("");
+  const inputCls = "touch-target rounded-full px-4 py-2 text-sm outline-none w-full min-w-0";
+  const inputStyle = { border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" } as const;
+  const valid = name.trim().length >= 2 && (maxBuy.trim() === "" || Number(maxBuy) > 0) && (ref.trim() === "" || Number(ref) > 0);
+  return (
+    <form className="mt-4 grid gap-3" aria-label="Add a watchlist target" onSubmit={e => { e.preventDefault(); if (!valid) return; onSubmit({ name: name.trim(), setName: setField.trim() || undefined, cardNumber: number.trim() || undefined, intent, gradeLabel: intent === "graded" ? (grade.trim() || undefined) : undefined, maxBuyUsd: maxBuy.trim() ? Number(maxBuy) : undefined, referenceUsd: ref.trim() ? Number(ref) : undefined, referenceSource: ref.trim() ? (refSource.trim() || "Owner-supplied reference at add") : undefined }); }}>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Card name *
+          <input aria-label="Watch target card name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Espeon ex" className={inputCls} style={inputStyle} /></label>
+        <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Set
+          <input aria-label="Watch target set" value={setField} onChange={e => setSetField(e.target.value)} placeholder="e.g. Prismatic Evolutions" className={inputCls} style={inputStyle} /></label>
+        <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Number
+          <input aria-label="Watch target card number" value={number} onChange={e => setNumber(e.target.value)} placeholder="e.g. 85" className={inputCls} style={inputStyle} /></label>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Intent
+          <select aria-label="Watch target intent — raw or graded" value={intent} onChange={e => setIntent(e.target.value as "raw" | "graded")} className={inputCls} style={inputStyle}><option value="raw">Raw — grading candidate</option><option value="graded">Graded</option></select></label>
+        <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Grade (if graded)
+          <input aria-label="Watch target grade" value={grade} onChange={e => setGrade(e.target.value)} placeholder="e.g. PSA 9" className={inputCls} style={inputStyle} disabled={intent === "raw"} /></label>
+        <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Max buy (USD)
+          <input aria-label="Watch target max buy in US dollars" value={maxBuy} onChange={e => setMaxBuy(e.target.value)} inputMode="decimal" placeholder="e.g. 120" className={inputCls} style={inputStyle} /></label>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Current reference (USD, optional) — filed as the first price point
+          <input aria-label="Current reference price in US dollars" value={ref} onChange={e => setRef(e.target.value)} inputMode="decimal" placeholder="Only if you have a sourced figure" className={inputCls} style={inputStyle} /></label>
+        <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Reference source
+          <input aria-label="Reference source" value={refSource} onChange={e => setRefSource(e.target.value)} placeholder="e.g. Verified sold comp — eBay sold" className={inputCls} style={inputStyle} /></label>
+      </div>
+      <p className="text-xs leading-relaxed" style={{ color: "var(--faint)" }}>No reference? Leave it blank — the item starts in the “accruing” state and its first point records at the next sourced check. A reference is never invented.</p>
+      <div><button type="submit" disabled={busy || !valid} aria-label="Add watch target" className="touch-target rounded-full px-5 py-2.5 text-sm font-bold disabled:opacity-50" style={{ background: "var(--accent)", color: "#1a0b36" }}>Add target</button></div>
+    </form>
+  );
+}
+
+/* Remove-from-collection block (spec R.2): mark SOLD or TRADED AWAY.
+   Never a hard delete — the card moves to Previously Owned. */
+function CardDispositionBlock({ card, busy, onSubmit }: { card: Card; busy: boolean; onSubmit: (args: { cert: string; disposition: "sold" | "traded"; salePriceUsd?: number; date?: string; note?: string }) => void }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"sold" | "traded">("sold");
+  const [price, setPrice] = useState(""); const [date, setDate] = useState(""); const [note, setNote] = useState("");
+  const inputCls = "touch-target rounded-full px-4 py-2 text-sm outline-none w-full min-w-0";
+  const inputStyle = { border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" } as const;
+  return (
+    <div className="quiet-panel mt-4 p-4 sm:p-5" role="group" aria-label={`Remove ${card.name} from the active collection`}>
+      <p className="kicker" style={{ color: "var(--faint)" }}>Remove from collection</p>
+      {!open && <div className="mt-2"><p className="text-sm leading-relaxed" style={{ color: "var(--dim)" }}>Sold it or traded it away? Mark it here — it moves to <strong style={{ color: "var(--text)" }}>Previously Owned</strong> with its terms, leaves the totals immediately, and is never hard-deleted.</p>
+      <button onClick={() => setOpen(true)} aria-label={`Mark ${card.name} as sold or traded away`} className="touch-target mt-2 rounded-full px-4 py-2 text-sm font-bold border" style={{ borderColor: "var(--sell)", color: "var(--sell)" }}>Mark sold / traded away</button></div>}
+      {open && (
+        <form className="mt-3 grid gap-2" onSubmit={e => { e.preventDefault(); onSubmit({ cert: card.cert, disposition: mode, salePriceUsd: mode === "sold" && price.trim() ? Number(price) : undefined, date: date || undefined, note: note.trim() || undefined }); }}>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Disposition type">
+            <button type="button" role="radio" aria-checked={mode === "sold"} onClick={() => setMode("sold")} className="touch-target rounded-full px-4 py-2 text-sm font-bold border" style={mode === "sold" ? { background: "var(--sell)", color: "#fff", borderColor: "var(--sell)" } : { borderColor: "var(--hairline)", color: "var(--dim)" }}>Sold</button>
+            <button type="button" role="radio" aria-checked={mode === "traded"} onClick={() => setMode("traded")} className="touch-target rounded-full px-4 py-2 text-sm font-bold border" style={mode === "traded" ? { background: "var(--sell)", color: "#fff", borderColor: "var(--sell)" } : { borderColor: "var(--hairline)", color: "var(--dim)" }}>Traded away</button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {mode === "sold" && <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Sale price (USD)
+              <input aria-label="Sale price in US dollars" value={price} onChange={e => setPrice(e.target.value)} inputMode="decimal" placeholder="e.g. 850" className={inputCls} style={inputStyle} /></label>}
+            <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Date
+              <input aria-label="Disposition date" type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} style={inputStyle} /></label>
+            <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>{mode === "sold" ? "Note (optional)" : "Trade note (what you got)"}
+              <input aria-label="Disposition note" value={note} onChange={e => setNote(e.target.value)} placeholder={mode === "traded" ? "e.g. Traded for … + cash" : "e.g. eBay sale"} className={inputCls} style={inputStyle} /></label>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" disabled={busy} aria-label={`Confirm marking ${card.name} as ${mode}`} className="touch-target rounded-full px-4 py-2 text-sm font-bold disabled:opacity-50" style={{ background: "var(--sell)", color: "#fff" }}>Confirm — move to Previously Owned</button>
+            <button type="button" onClick={() => setOpen(false)} disabled={busy} aria-label="Cancel disposition" className="touch-target rounded-full px-4 py-2 text-sm font-bold border disabled:opacity-50" style={{ borderColor: "var(--hairline)", color: "var(--dim)" }}>Cancel</button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+const SCOUT_FOCUS_GROUPS = ["Silver-Border WC", "Japanese Vending Series", "LV.X lag", "Southern Islands", "e-Series / Crystal", "HGSS Primes", "Sun & Moon mid-modern", "XY Secret Rares", "Japanese imports", "Sealed", "151 second-tier", "Watchlist"];
+
+/* Per-scout setup form (spec R.3): active on/off, hunt focus groups,
+   ceiling, Tier 1 threshold, marketplace scope. Saving writes the
+   scout_configs row the sweep + refresh read. */
+function ScoutSetupForm({ scoutName, config, busy, onSave }: { scoutName: string; config: { isActive: boolean; focusGroups: string[]; ceilingUsd: number | null; tier1DiscountPct: number | null; marketplaces: string }; busy: boolean; onSave: (args: { isActive: boolean; focusGroups: string[]; ceilingUsd: number | null; tier1DiscountPct: number | null; marketplaces: string }) => void }) {
+  const [active, setActive] = useState(config.isActive);
+  const [groups, setGroups] = useState<string[]>(config.focusGroups);
+  const [ceiling, setCeiling] = useState(config.ceilingUsd != null ? String(config.ceilingUsd) : "");
+  const [tier1, setTier1] = useState(config.tier1DiscountPct != null ? String(config.tier1DiscountPct) : "");
+  const [markets, setMarkets] = useState(config.marketplaces);
+  const inputCls = "touch-target rounded-full px-4 py-2 text-sm outline-none w-full min-w-0";
+  const inputStyle = { border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" } as const;
+  const toggleGroup = (g: string) => setGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
+  return (
+    <form className="mt-3 grid gap-3" aria-label={`Setup for scout ${scoutName}`} onSubmit={e => { e.preventDefault(); onSave({ isActive: active, focusGroups: groups, ceilingUsd: ceiling.trim() ? Number(ceiling) : null, tier1DiscountPct: tier1.trim() ? Number(tier1) : null, marketplaces: markets.trim() }); }}>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" role="switch" aria-checked={active} aria-label={`${scoutName} active`} onClick={() => setActive(v => !v)} className="touch-target rounded-full px-4 py-2 text-sm font-bold border" style={active ? { background: "var(--hold)", color: "var(--ink-on-fill)", borderColor: "var(--hold)" } : { borderColor: "var(--hairline)", color: "var(--dim)" }}>{active ? "● Active" : "○ Off"}</button>
+        <span className="text-xs" style={{ color: "var(--faint)" }}>{active ? "This scout hunts on every sweep." : "Off — its targets are skipped entirely until you turn it back on."}</span>
+      </div>
+      <fieldset>
+        <legend className="text-xs font-bold" style={{ color: "var(--dim)" }}>Hunt focus — which watch groups this scout owns (none ticked = all groups)</legend>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {SCOUT_FOCUS_GROUPS.map(g => (
+            <button key={g} type="button" aria-pressed={groups.includes(g)} aria-label={`Focus group ${g} for ${scoutName}`} onClick={() => toggleGroup(g)} className="touch-target rounded-full px-3 py-1.5 text-xs font-bold border" style={groups.includes(g) ? { background: "var(--accent)", color: "#1a0b36", borderColor: "var(--accent)" } : { borderColor: "var(--hairline)", color: "var(--dim)" }}>{g}</button>
+          ))}
+        </div>
+      </fieldset>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Ceiling (USD) — caps its targets' max-buy
+          <input aria-label={`${scoutName} ceiling in US dollars`} value={ceiling} onChange={e => setCeiling(e.target.value)} inputMode="decimal" placeholder="No ceiling" className={inputCls} style={inputStyle} /></label>
+        <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Tier 1 threshold (% under comp)
+          <input aria-label={`${scoutName} Tier 1 discount threshold percent`} value={tier1} onChange={e => setTier1(e.target.value)} inputMode="decimal" placeholder="Default 15" className={inputCls} style={inputStyle} /></label>
+        <label className="grid gap-1 text-xs font-bold" style={{ color: "var(--dim)" }}>Marketplace scope
+          <input aria-label={`${scoutName} marketplace scope`} value={markets} onChange={e => setMarkets(e.target.value)} placeholder="Default — its territory" className={inputCls} style={inputStyle} /></label>
+      </div>
+      <div><button type="submit" disabled={busy} aria-label={`Save setup for ${scoutName}`} className="touch-target rounded-full px-5 py-2.5 text-sm font-bold disabled:opacity-50" style={{ background: "var(--accent)", color: "#1a0b36" }}>Save setup</button></div>
+    </form>
+  );
+}
+
 export function App() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["portfolio"], queryFn: () => api.getPortfolio({}) });
@@ -1369,15 +1831,23 @@ export function App() {
   const [callFilter, setCallFilter] = useState("All");
   const [sortKey, setSortKey] = useState<"value" | "year" | "grade" | "name">("value");
   const [selectedCert, setSelectedCert] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const updateVal = useMutation({
-    mutationFn: (args: { cert: string; checkedUsd: number | null }) => api.updateCardValue(args),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }),
-  });
+  /* The manual value editor is REMOVED from the detail UI (owner,
+     Oct 13) — no editValue state, no update mutation wired here.
+     The updateCardValue server action stays dormant; values come
+     from the refresh/comp system (no card is locked — the
+     owner-kept lock system was removed Oct 14, 2026). */
   const updateWatch = useMutation({
-    mutationFn: (args: { id: number; status: string }) => api.updateWatchlistItem(args),
+    mutationFn: (args: { id: number; status?: string; priceContext?: string; maxBuyUsd?: number | null; setName?: string; cardNumber?: string; intent?: string; gradeLabel?: string }) => api.updateWatchlistItem(args),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }),
   });
+  /* Owner management mutations (Oct 14, 2026 — spec Q/R) */
+  const addWatchMut = useMutation({ mutationFn: (args: { name: string; setName?: string; cardNumber?: string; intent?: "raw" | "graded"; gradeLabel?: string; maxBuyUsd?: number; referenceUsd?: number; referenceSource?: string }) => api.addWatchItem(args), onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }) });
+  const removeWatchMut = useMutation({ mutationFn: (args: { id: number }) => api.removeWatchItem(args), onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }) });
+  const dispositionMut = useMutation({ mutationFn: (args: { cert: string; disposition: "sold" | "traded"; salePriceUsd?: number; date?: string; note?: string }) => api.markCardDisposition(args), onSuccess: () => { qc.invalidateQueries({ queryKey: ["portfolio"] }); setSelectedCert(null); } });
+  const [showAddWatch, setShowAddWatch] = useState(false);
+  const [setupScoutId, setSetupScoutId] = useState<string | null>(null);
+  const [ledgerScoutId, setLedgerScoutId] = useState<string | null>(null);
+  const scoutConfigMut = useMutation({ mutationFn: (args: { scoutId: string; isActive?: boolean; focusGroups?: string[]; ceilingUsd?: number | null; tier1DiscountPct?: number | null; marketplaces?: string }) => api.updateScoutConfig(args), onSuccess: () => { qc.invalidateQueries({ queryKey: ["portfolio"] }); setSetupScoutId(null); } });
   const passDealMut = useMutation({
     mutationFn: (args: { id: number }) => api.passDeal(args),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }),
@@ -1393,6 +1863,7 @@ export function App() {
   /* ——— V2 state ——— */
   const exitDraftMut = useMutation({ mutationFn: (args: { cert: string }) => api.createExitDraft(args), onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }) });
   const exitUpdateMut = useMutation({ mutationFn: (args: { id: number; status: "draft" | "listed" | "sold"; salePrice?: number | null; soldDate?: string | null }) => api.updateExitDraft(args), onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }) });
+  const exitDeleteMut = useMutation({ mutationFn: (args: { id: number }) => api.deleteExitDraft(args), onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }) });
   const updateCostMut = useMutation({ mutationFn: (args: { cert: string; costUsd: number | null; note?: string | null; date?: string | null }) => api.updateCardCost(args), onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }) });
   const passListingMut = useMutation({ mutationFn: (args: { id: number }) => api.passListing(args), onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }) });
   /* Closed / Ended (Oct 12, 2026): files the finding Gone with an
@@ -1410,33 +1881,28 @@ export function App() {
      no longer read or written by the client; server-side digest
      computation and deal-alert recording are untouched, and the
      freshness line from the old block renders standalone on Home. */
-  /* ——— UI theme (Vapor Vault): ALWAYS Auto ———
-     The vapor theme follows the device via prefers-color-scheme and
-     reacts LIVE when the OS setting changes while the page is open.
-     There is no in-app Light/Dark override. Any previously persisted
-     'v2-ui-theme' preference is cleared on load so an old manual
-     choice can't stick. The resolved theme is written to <html
-     data-ui-theme> — the pre-paint script in index.html resolves it
-     the same way before first paint; this effect keeps it in sync.
-     Panels follow the UI theme, never the town's day/night clock. */
-  const [systemDark, setSystemDark] = useState<boolean>(() => { try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch { return true; } });
+  /* ——— UI theme (Vapor Vault): NIGHT VAPOR PERMANENTLY ———
+     Owner decision, Oct 13, 2026 ("keep it in dark mode
+     permanently"): the whole data UI renders the Night Vapor token
+     set ALWAYS, regardless of the OS prefers-color-scheme. Day
+     Vapor is retired — nothing binds to it. This supersedes the
+     old Auto-only ruling. Any previously persisted 'v2-ui-theme'
+     preference is cleared on load. The theme is written to <html
+     data-ui-theme> as "dark" unconditionally — the pre-paint script
+     in index.html sets the same value before first paint. The town's
+     own day/night clock (world layer) keeps running as art; panels
+     never follow it. */
   useEffect(() => { try { window.localStorage.removeItem("v2-ui-theme"); } catch { /* private mode */ } }, []);
+  const uiTheme = "dark" as const;
+  /* Chart tick (design pass, Oct 13): a resolved hex because Recharts
+     writes tick fill as an SVG attribute (CSS var() does not resolve
+     there). Night Vapor only: #cfc4ec = 10.46:1 against the panel
+     surface. Tooltips resolve through the Night --tooltip-* tokens. */
+  const chartTick = { fill: "#cfc4ec", fontSize: 11 } as const;
   useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
+    document.documentElement.dataset.uiTheme = "dark";
+    document.documentElement.style.colorScheme = "dark";
   }, []);
-  const uiTheme = systemDark ? "dark" : "light";
-  /* Theme-aware chart tick (design pass, Oct 13): resolved hex per UI
-     theme because Recharts writes tick fill as an SVG attribute (CSS
-     var() does not resolve there). Night #cfc4ec = 10.46:1 and Day
-     #57467e = 7.96:1 against the panel surface. */
-  const chartTick = { fill: uiTheme === "dark" ? "#cfc4ec" : "#57467e", fontSize: 11 } as const;
-  useEffect(() => {
-    document.documentElement.dataset.uiTheme = uiTheme;
-    document.documentElement.style.colorScheme = uiTheme;
-  }, [uiTheme]);
   /* ——— Smart-sticky command strip ———
      The strip sticks at the top, slides away (transform only — its
      flow space stays, so content never jumps) after ~12px of
@@ -1450,7 +1916,7 @@ export function App() {
   const [stripHidden, setStripHidden] = useState(false);
   const stripRef = useRef<HTMLDivElement | null>(null);
   const detailBackRef = useRef<HTMLButtonElement | null>(null);
-  type DetailOrigin = { group: NavGroupId; sub: NavSubId | null; show: boolean; hub: string; scrollY: number };
+  type DetailOrigin = { group: NavGroupId; sub: NavSubId | null; show: boolean; hub: string; scrollY: number; scrollers: { el: HTMLElement; top: number }[] };
   const detailOriginRef = useRef<DetailOrigin | null>(null);
   const lastFocusRef = useRef<Element | null>(null);
   const stripScrollRef = useRef({ lastY: 0, down: 0, up: 0 });
@@ -1481,19 +1947,25 @@ export function App() {
   }, []);
 
   /* Card DETAIL PAGE behaviour — the detail is a PAGE, not a dialog:
-     no focus trap, no Esc-close, no overlay. Opening it (selectedCert
-     goes null → cert) starts the page at the top and lands focus on
-     the ← Back button; switching cards inside the page (sibling
-     copies) does not re-run this. ← Back (closeDetail) restores the
-     origin view, scroll position and invoking control's focus. */
+     no focus trap, no Esc-close, no overlay. EVERY entry into a card
+     (selectedCert changes to a cert, from any surface — Collection,
+     Home fan, heatmap, Terminal, Show Mode, sibling-copy switch)
+     anchors the page at the TOP: every scroller that carries page
+     scroll (window, document element, or the embed wrapper column)
+     is reset immediately and re-asserted as the first paint and
+     images settle, so late-loading art cannot shove the anchor.
+     Focus lands on the ← Back button. ← Back (closeDetail) restores
+     the origin view, scroll position and invoking control's focus —
+     the origin's saved scroll is bypassed only on the way IN. */
   const detailPageOpen = selectedCert != null;
   useEffect(() => {
-    if (!detailPageOpen) return;
-    window.scrollTo({ top: 0 });
-    const t = setTimeout(() => { detailBackRef.current?.focus({ preventScroll: true }); }, 40);
-    return () => clearTimeout(t);
-  }, [detailPageOpen]);
+    if (selectedCert == null) return;
+    const cancelAnchor = anchorTopWithSettle();
+    const tf = setTimeout(() => { detailBackRef.current?.focus({ preventScroll: true }); }, 40);
+    return () => { cancelAnchor(); clearTimeout(tf); };
+  }, [selectedCert]);
   const [heatmapMode, setHeatmapMode] = useState<"portfolio" | "watchlist">("portfolio");
+  const [flashWatchId, setFlashWatchId] = useState<number | null>(null);
   const [v2Tab, setV2Tab] = useState<string>("none");
   const [showQ, setShowQ] = useState("");
   const [showCert, setShowCert] = useState<string | null>(null);
@@ -1551,19 +2023,6 @@ export function App() {
       setScanError(e instanceof Error ? e.message : "Scan failed — try again, or type the cert number.");
     } finally { setScanBusy(false); }
   };
-  const [lineageCert, setLineageCert] = useState<string>("DEMO-1001");
-  const [newLineageCert, setNewLineageCert] = useState("");
-  const [newLineageLabel, setNewLineageLabel] = useState("");
-  const lineageAddMut = useMutation({ mutationFn: (args: { cert: string; label: string }) => api.addLineageWatch({ cert: args.cert, label: args.label, relation: "watched" }), onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }) });
-  const lineageRemoveMut = useMutation({ mutationFn: (args: { cert: string }) => api.removeLineageWatch(args), onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }) });
-  const exportLineage = async (cert: string) => {
-    const res = await api.exportLineage({ cert });
-    if (!res.exported) return;
-    const blob = new Blob([res.record], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `slab-lineage-${cert}.json`; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-  };
   const [trenchIdx, setTrenchIdx] = useState(0);
   /* ——— Grouped navigation (Oct 9 regrouping) ———
      The 11-pill surfaces bar is replaced by FIVE top-level groups —
@@ -1574,8 +2033,8 @@ export function App() {
      top bar. Every former destination is re-homed, nothing deleted:
        Deals  › Trenches (hub) · Ledger (findings-ledger) · Market
                 (Market Terminal section + Bid/Ask + Exit hub)
-       Vault  › Collection · Watch · Lineage (hub)
-       Scouts › League (scout row + sweeps + Paper League hub) · Town
+       Vault  › Collection · Watch (hub)
+       Scouts › League (scout row + sweeps + journal) · Town
                 (NPC hub + Seasonal Events hub)
        Insights › Growth (Indices hub + allocation/momentum) · Risk
      navGroup/navSub are the state; v2Tab is kept in sync for the
@@ -1585,11 +2044,11 @@ export function App() {
      Hub sections are display:none until the state lands, so scrolling
      waits a tick for the section to render open. */
   type NavGroupId = "home" | "deals" | "vault" | "scouts" | "insights";
-  type NavSubId = "trenches" | "ledger" | "market" | "collection" | "watch" | "lineage" | "league" | "town" | "growth" | "risk";
+  type NavSubId = "trenches" | "ledger" | "market" | "collection" | "watch" | "sell" | "league" | "town" | "growth" | "risk";
   const NAV_GROUPS: { id: NavGroupId; label: string; name: string; subs: { id: NavSubId; label: string }[] }[] = [
     { id: "home", label: "Home", name: "Home", subs: [] },
     { id: "deals", label: "Deals", name: "Deals", subs: [{ id: "trenches", label: "Trenches" }, { id: "ledger", label: "Ledger" }, { id: "market", label: "Market" }] },
-    { id: "vault", label: "Vault", name: "Vault", subs: [{ id: "collection", label: "Collection" }, { id: "watch", label: "Watch" }, { id: "lineage", label: "Lineage" }] },
+    { id: "vault", label: "Vault", name: "Vault", subs: [{ id: "collection", label: "Collection" }, { id: "watch", label: "Watch" }, { id: "sell", label: "Sell" }] },
     { id: "scouts", label: "Scouts", name: "Scouts", subs: [{ id: "league", label: "League" }, { id: "town", label: "Town" }] },
     { id: "insights", label: "Insights", name: "Insights", subs: [{ id: "growth", label: "Growth" }, { id: "risk", label: "Risk" }] },
   ];
@@ -1602,18 +2061,18 @@ export function App() {
     market: { desc: "Live listings vs market value" },
     collection: { desc: "Every graded card you own" },
     watch: { desc: "Targets the scouts hunt" },
-    lineage: { desc: "Cert biographies & siblings" },
-    league: { desc: "Paper-trading standings" },
+    sell: { desc: "Exit Desk drafts — sell / trim" },
+    league: { desc: "Scout roster & field journal" },
     town: { desc: "The living town — full screen" },
     growth: { desc: "Value over time & forecasts" },
     risk: { desc: "Pumps, dilution & concentration" },
   };
   const NAV_DEFAULT_SUB: Record<NavGroupId, NavSubId | null> = { home: null, deals: "trenches", vault: "collection", scouts: "league", insights: "growth" };
-  const NAV_HUB_FOR: Partial<Record<NavSubId, string>> = { trenches: "deals", market: "market", lineage: "lineage", league: "scouts", town: "town", growth: "growth", risk: "risk" };
-  const NAV_TARGET_FOR: Partial<Record<NavSubId, string>> = { trenches: "v2-trenches", ledger: "findings-ledger", market: "v2-terminal", collection: "v2-collection", watch: "v2-watchlist", lineage: "v2-lineage", league: "v2-league", town: "v2-npc", growth: "v2-indices", risk: "v2-risk" };
+  const NAV_HUB_FOR: Partial<Record<NavSubId, string>> = { trenches: "deals", market: "market", league: "scouts", town: "town", growth: "growth", risk: "risk" };
   const [navGroup, setNavGroup] = useState<NavGroupId>("home");
   const [navSub, setNavSub] = useState<NavSubId | null>(null);
   const [showOpen, setShowOpen] = useState(false);
+  const isMobileWidth = useIsMobileWidth();
   const activeSub: NavSubId | null = navSub ?? NAV_DEFAULT_SUB[navGroup];
   /* ——— Launcher state (Glass Vault phase 1) ———
      Tapping a group WITH sub-surfaces opens the launcher (and lands
@@ -1657,9 +2116,37 @@ export function App() {
     setNavGroup(group);
     setNavSub(s);
     setV2Tab(s ? (NAV_HUB_FOR[s] ?? "none") : "none");
-    const target = s ? NAV_TARGET_FOR[s] : undefined;
-    if (!target) { window.scrollTo({ top: 0, behavior: "smooth" }); return; }
-    window.setTimeout(() => { const el = document.getElementById(target); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60);
+    /* EVERY forward navigation lands at scroll 0 — the TOP of the
+       new view, full stop (owner law, Oct 14). The previous build
+       instead scrolled the sub-view's "target section" into view
+       (scrollIntoView at 60/220ms, after a synchronous reset), on
+       the assumption that the target section IS the view's first
+       content. It is not: in Vault › Collection the Projections
+       box renders ABOVE #v2-collection in the same view, and in
+       Deals › Market the Bid/Ask board renders above the Terminal
+       — so Home (scrolled deep) → Vault landed at the collection's
+       offset (≈372px on phone, measured in the probe repro), i.e.
+       mid-view, exactly as the owner reported. There is no target
+       table anymore: anchorTopWithSettle resets every scroller and
+       re-asserts 0 as the new view paints and settles, and a view
+       sitting at exactly 0 is self-stabilizing — late-loading row
+       art can only push content down, never pull the anchor off
+       the top. (The one deliberate exception stays: goWatchItem's
+       heatmap → watch-item anchor — it cancels this settle via the
+       returned cleanup before scrolling the item into view.) */
+    return anchorTopWithSettle();
+  };
+  /* Heatmap watchlist tiles land here: navigate to Vault › Watch,
+     scroll the item into view and flash its outline briefly. */
+  const goWatchItem = (id: number) => {
+    /* Deliberate exception to the top-anchor law (heatmap → the
+       tapped watch item): cancel goNav's settle re-assertions so
+       they cannot yank the page back to the top mid-scroll. */
+    const cancelAnchor = goNav("vault", "watch");
+    cancelAnchor();
+    setFlashWatchId(id);
+    window.setTimeout(() => { document.getElementById(`watch-item-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); }, 140);
+    window.setTimeout(() => { setFlashWatchId(cur => (cur === id ? null : cur)); }, 2800);
   };
   const openGroup = (group: NavGroupId, invoker: HTMLElement | null) => {
     const g = NAV_GROUPS.find(x => x.id === group);
@@ -1675,11 +2162,13 @@ export function App() {
     setLauncherGroup(null);
     setShowOpen(true);
     setV2Tab("show");
-    window.setTimeout(() => { const el = document.getElementById("v2-show"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60);
+    /* Same top-anchor law as goNav: land at scroll 0 and hold it
+       through settle — no scrollIntoView to a section (see goNav). */
+    anchorTopWithSettle();
   };
   /* ——— Card DETAIL PAGE navigation ———
      openCardDetail swaps the current view for the card's dedicated
-     detail page. The FIRST open (from a list/search/lineage surface)
+     detail page. The FIRST open (from a list/search surface)
      captures the exact origin — nav group, sub-view, Show Mode state,
      hub tab and scroll position — plus the invoking control, so
      closeDetail (the page's ← Back button) returns the user to exactly
@@ -1689,12 +2178,24 @@ export function App() {
   const openCardDetail = (cert: string) => {
     setLauncherGroup(null);
     if (selectedCertRef.current == null) {
+      // Capture EVERY scroller's position, not just the window's:
+      // in the mobile embed the page scroll lives in a wrapper
+      // column, and the detail entry resets them all to the top —
+      // Back must restore them all, exactly (owner, Oct 14).
+      const scrollers: { el: HTMLElement; top: number }[] = [];
+      document.querySelectorAll<HTMLElement>("body *").forEach((el) => {
+        if (el.scrollTop > 0 && !el.classList.contains("table-scroll")) {
+          const oy = window.getComputedStyle(el).overflowY;
+          if (oy === "auto" || oy === "scroll") scrollers.push({ el, top: el.scrollTop });
+        }
+      });
       detailOriginRef.current = {
         group: navGroup,
         sub: navSub,
         show: showOpen,
         hub: v2Tab,
         scrollY: Math.max(0, window.scrollY || document.documentElement?.scrollTop || document.body?.scrollTop || 0),
+        scrollers,
       };
       lastFocusRef.current = document.activeElement;
     }
@@ -1713,6 +2214,13 @@ export function App() {
     window.setTimeout(() => {
       window.scrollTo({ top: o?.scrollY ?? 0 });
       try { document.documentElement.scrollTop = o?.scrollY ?? 0; } catch { /* viewport scroll is primary */ }
+      // Restore the wrapper scrollers captured on entry (the mobile
+      // embed scrolls a column, not the window) — re-asserted once
+      // more after the origin view settles so the exact position
+      // holds.
+      const restoreScrollers = () => { o?.scrollers?.forEach(({ el, top }) => { if (document.contains(el)) el.scrollTop = top; }); };
+      restoreScrollers();
+      window.setTimeout(restoreScrollers, 220);
       const prev = lastFocusRef.current as HTMLElement | null;
       if (prev && document.contains(prev) && typeof prev.focus === "function") prev.focus({ preventScroll: true });
     }, 80);
@@ -1736,12 +2244,14 @@ export function App() {
     const next = e.key === "Home" ? items[0]! : e.key === "End" ? items[items.length - 1]! : items[(idx + (e.key === "ArrowRight" ? 1 : -1) + items.length) % items.length]!;
     next.focus();
   };
-  /* Findings Ledger filters — one primary axis (tier tabs) + chips */
-  const [ledgerTier, setLedgerTier] = useState<"all" | "pinned" | "close" | "stale" | "sightings" | "acquired" | "expired">("all");
-  const [ledgerScout, setLedgerScout] = useState("All");
-  const [ledgerMarket, setLedgerMarket] = useState("All");
-  const [ledgerGroup, setLedgerGroup] = useState("All");
-  const [ledgerStatus, setLedgerStatus] = useState("All");
+  /* Findings Ledger filter — ONE segmented row of 4 (owner, Oct 14:
+     the Scout / Market / Target / Status pill rows and the 7-way tier
+     stack were overkill at ~20 records; attribution lives on each
+     finding card already). Mapping: Live = Pinned + Close (their
+     tier badges stay on the cards); Unverified = Stale + Sightings;
+     Acquired has no segment — those records live under All findings
+     with their bought badge on the card. */
+  const [ledgerTier, setLedgerTier] = useState<"all" | "live" | "unverified" | "expired">("all");
   const [ledgerShowExpired, setLedgerShowExpired] = useState(false);
   /* Collapsible logs — BOTH logs (sweep log + change log) use the same
      pattern: collapsed by default, header always visible with the newest
@@ -1777,13 +2287,13 @@ export function App() {
      manual phase from an older build. */
   useEffect(() => { try { window.localStorage.removeItem("tod-override"); } catch { /* private mode */ } }, []);
   const todReduced = usePrefersReducedMotion();
-  /* Overscroll / body backdrop: the vapor sky base (Glass Vault) —
-     the town grass no longer backs data surfaces. The sky gradient
-     itself lives in theme.css per UI theme; this only keeps the
-     flat overscroll colour in step. */
+  /* Overscroll / body backdrop: the Night Vapor sky base (Glass
+     Vault) — the town grass no longer backs data surfaces. The sky
+     gradient itself lives in theme.css; this only keeps the flat
+     overscroll colour in step (Night Vapor permanently). */
   useEffect(() => {
-    try { document.body.style.backgroundColor = systemDark ? "#160a30" : "#e9e1fb"; } catch { /* no document in SSR-ish probe */ }
-  }, [systemDark]);
+    try { document.body.style.backgroundColor = "#160a30"; } catch { /* no document in SSR-ish probe */ }
+  }, []);
 
   const data = q.data;
   /* Passed suggestions render NOWHERE: the server already withholds them,
@@ -1865,7 +2375,6 @@ export function App() {
   const ledgerAll = useMemo(() => [...(data?.ledger ?? [])].filter(d => !isPicClickEntry(d)).sort((a, b) => (b.lastSeenAt ?? b.foundAt).localeCompare(a.lastSeenAt ?? a.foundAt)), [data]);
   const ledgerLive = useMemo(() => ledgerAll.filter(d => !!d.listingUrl && d.status !== "gone" && d.status !== "bought" && d.status !== "stale"), [ledgerAll]);
   const ledgerPinned = useMemo(() => ledgerAll.filter(isLedgerPinned), [ledgerAll]);
-  const ledgerClose = useMemo(() => ledgerAll.filter(isLedgerClose), [ledgerAll]);
   const ledgerSightings = useMemo(() => ledgerAll.filter(d => !d.listingUrl), [ledgerAll]);
   const ledgerStale = useMemo(() => ledgerAll.filter(d => d.status === "stale"), [ledgerAll]);
   /* Round 4 lookups: Rocket bear cases + Committee records by deal id. */
@@ -1875,29 +2384,34 @@ export function App() {
   const ledgerDrops = useMemo(() => ledgerAll.filter(d => d.status === "price_dropped"), [ledgerAll]);
   const ledgerBought = useMemo(() => ledgerAll.filter(d => d.status === "bought"), [ledgerAll]);
   const ledgerGone = useMemo(() => ledgerAll.filter(d => d.status === "gone"), [ledgerAll]);
-  const ledgerMarkets = useMemo(() => Array.from(new Set(ledgerAll.map(d => d.marketplace.split("—")[0]?.trim() ?? d.marketplace))).sort(), [ledgerAll]);
-  const ledgerGroups = useMemo(() => Array.from(new Set(ledgerAll.map(d => d.targetGroup || "Watchlist"))).sort(), [ledgerAll]);
-  const ledgerStatuses = useMemo(() => Array.from(new Set(ledgerAll.map(d => d.status))).sort(), [ledgerAll]);
+  /* Segment sets for the 4-way Ledger row (see state note above):
+     Live is exactly Pinned + Close; Unverified is Stale + Sightings
+     (a sighting — no listing link — is unverified by definition);
+     both exclude gone/bought so the segments partition the non-gone
+     records together with the bought ones under All. */
+  const isLedgerUnverified = (d: LedgerEntry) => d.status !== "gone" && d.status !== "bought" && (d.status === "stale" || !d.listingUrl);
+  const ledgerUnverified = useMemo(() => ledgerAll.filter(isLedgerUnverified), [ledgerAll]);
   const ledgerFiltered = useMemo(() => {
     return ledgerAll.filter(d => {
-      // Primary axis: tier tabs (from the entry's own tier + status, so
-      // deal_feed and market_listings findings segment identically)
-      if (ledgerTier === "pinned" && !isLedgerPinned(d)) return false;
-      if (ledgerTier === "close" && !isLedgerClose(d)) return false;
-      if (ledgerTier === "sightings" && !!d.listingUrl) return false;
-      if (ledgerTier === "acquired" && d.status !== "bought") return false;
-      if (ledgerTier === "stale" && d.status !== "stale") return false;
+      if (ledgerScoutId && d.scoutId !== ledgerScoutId) return false;
+      // The single 4-way segment axis (from the entry's own tier +
+      // status + link, so deal_feed and market_listings findings
+      // segment identically). All findings = every non-gone record,
+      // bought included; Expired / Gone is its own segment and the
+      // collapsed record below stays as the second path to it.
+      if (ledgerTier === "live" && !isLedgerPinned(d) && !isLedgerClose(d)) return false;
+      if (ledgerTier === "unverified" && !isLedgerUnverified(d)) return false;
       if (ledgerTier === "expired" && d.status !== "gone") return false;
-      if (ledgerTier === "all" && d.status === "gone" && !ledgerShowExpired) return false;
-      if (ledgerTier === "all" && d.status === "bought") return false;
-      // Chips
-      if (ledgerScout !== "All" && d.scoutId !== ledgerScout) return false;
-      if (ledgerMarket !== "All" && (d.marketplace.split("—")[0]?.trim() ?? d.marketplace) !== ledgerMarket) return false;
-      if (ledgerGroup !== "All" && (d.targetGroup || "Watchlist") !== ledgerGroup) return false;
-      if (ledgerStatus !== "All" && d.status !== ledgerStatus) return false;
+      if (ledgerTier === "all" && d.status === "gone") return false;
       return true;
     });
-  }, [ledgerAll, ledgerTier, ledgerScout, ledgerMarket, ledgerGroup, ledgerStatus, ledgerShowExpired]);
+  }, [ledgerAll, ledgerTier, ledgerScoutId]);
+  const ledgerScout = ledgerScoutId ? scoutById.get(ledgerScoutId) : undefined;
+  const viewScoutFinds = (scoutId: string) => {
+    setLedgerScoutId(scoutId);
+    setLedgerTier("all");
+    goNav("deals", "ledger");
+  };
   const ledgerSummary = useMemo(() => {
     return `${ledgerLive.length} live · ${ledgerNew.length} new · ${ledgerDrops.length} drops · ${ledgerSightings.length} sightings · ${ledgerStale.length} stale${ledgerBought.length ? ` · ${ledgerBought.length} bought` : ""}${ledgerGone.length ? ` · ${ledgerGone.length} expired` : ""}`;
   }, [ledgerLive, ledgerNew, ledgerDrops, ledgerBought, ledgerGone, ledgerStale, ledgerSightings]);
@@ -1922,7 +2436,9 @@ export function App() {
   const selected: Card | undefined = active.find(c => c.cert === selectedCert);
   const selectedSales = useMemo(() => (data?.sales ?? []).filter(s => s.cardCert === selectedCert), [data, selectedCert]);
   const verifiedSales = useMemo(() => selectedSales.filter(s => s.verified), [selectedSales]);
-  const unverifiedSales = useMemo(() => selectedSales.filter(s => !s.verified), [selectedSales]);
+  /* Unverified sales render inside the single Recent sales list,
+     marked in the where-string via saleVenue() — no separate
+     unverified collection is needed by the detail page anymore. */
 
   const base = data?.totals.officialTotal ?? 0;
   /* Comp-based officials (Oct 10, 2026): the headline is each card's
@@ -1949,11 +2465,12 @@ export function App() {
   /* ——— V2 computed ——— */
   const v2 = data?.v2;
   /* Deal alerts with PicClick removed — the alert count and list both
-     derive from this filtered set. Closed-auction guard: an
-     auction-ending alert whose auction has closed NEVER renders on
+     derive from this filtered set. Closed-auction guard (Oct 12, 2026):
+     an auction-ending alert whose auction has closed NEVER renders on
      Home again — the server retires closed auction alerts to status
-     'resolved_closed' and excludes them from the payload; this
-     client check is the second lock. */
+     'resolved_closed' and excludes them from the payload; this client
+     filter is the second lock, so a stale row can never present a
+     closed lot as a live alert. */
   const visibleAlerts = useMemo(() => (v2?.alerts ?? []).filter(a => {
     if (isPicClickUrl(a.listingUrl)) return false;
     if (a.status === "resolved_closed") return false;
@@ -1966,6 +2483,37 @@ export function App() {
     const first = vs[0]!; const last = vs[vs.length - 1]!;
     return first.price > 0 ? Math.round(((last.price - first.price) / first.price) * 1000) / 10 : null;
   };
+  /* Watchlist heatmap tiles (Oct 14, 2026): value = the item's latest
+     recorded price point (terminal's recorded figure as fallback);
+     colour = change from the FIRST recorded point to the latest, with
+     the window labelled honestly ("since Oct 8" until a true trailing
+     30 days of points exists, then "30d"). An item still on one point
+     reads "awaiting second check" — grey, never a fabricated zero. */
+  const watchPointsById = useMemo(() => {
+    const m = new Map<number, { priceUsd: number; sourceType: string; recordedOn: string }[]>();
+    for (const p of v2?.watchPoints ?? []) { const a = m.get(p.watchId) ?? []; a.push(p); m.set(p.watchId, a); }
+    for (const a of m.values()) a.sort((x, y) => x.recordedOn.localeCompare(y.recordedOn));
+    return m;
+  }, [v2]);
+  const terminalByKey = useMemo(() => new Map((data?.terminal ?? []).map(t => [t.subjectKey, t])), [data]);
+  const watchHeatTiles = useMemo(() => {
+    const out: { id: number; name: string; value: number; change: number | null; windowLabel: string; bg: string }[] = [];
+    for (const w of data?.watchlist ?? []) {
+      const pts = watchPointsById.get(w.id) ?? [];
+      const term = terminalByKey.get(`watch-${w.id}`);
+      const value = pts.length ? pts[pts.length - 1]!.priceUsd : (term?.marketUsd ?? null);
+      if (value == null) continue;
+      let change: number | null = null; let windowLabel = "";
+      if (pts.length >= 2 && pts[0]!.priceUsd > 0) {
+        change = Math.round(((pts[pts.length - 1]!.priceUsd - pts[0]!.priceUsd) / pts[0]!.priceUsd) * 1000) / 10;
+        const spanDays = (Date.parse(pts[pts.length - 1]!.recordedOn) - Date.parse(pts[0]!.recordedOn)) / 86400000;
+        windowLabel = spanDays >= 30 ? "30d" : `since ${new Date(`${pts[0]!.recordedOn}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+      }
+      const bg = change == null ? "rgba(140,140,140,0.35)" : change >= 0 ? `rgba(63,182,143,${Math.min(0.75, 0.25 + Math.abs(change) / 60)})` : `rgba(224,90,58,${Math.min(0.75, 0.25 + Math.abs(change) / 60)})`;
+      out.push({ id: w.id, name: w.name, value, change, windowLabel, bg });
+    }
+    return out.sort((a, b) => b.value - a.value);
+  }, [data, watchPointsById, terminalByKey]);
   const trenchItems = useMemo(() => {
     const fromListings = liveListings.map(l => ({ key: `l-${l.id}`, id: l.id, source: "listing" as string, name: l.subjectName, grade: l.gradeLabel, ask: l.askingUsd, pctOfMarket: l.pctOfMarket, marketplace: l.marketplace, at: l.firstFoundAt ?? l.foundAt, url: l.listingUrl, dealId: null as number | null }));
     const fromDeals = deals.filter(d => !!d.listingUrl && d.status !== "gone" && d.status !== "bought" && d.status !== "stale").map(d => ({ key: `d-${d.id}`, id: d.id, source: "deal" as string, name: d.cardName, grade: d.gradeLabel, ask: d.askingUsd, pctOfMarket: d.pctOfMarket, marketplace: d.marketplace, at: d.firstFoundAt ?? d.foundAt, url: d.listingUrl, dealId: d.id as number | null }));
@@ -2026,6 +2574,60 @@ export function App() {
   const todPanel = TOD_PANEL[todPhase];
   const todHourFloat = todNow.getHours() + todNow.getMinutes() / 60;
 
+  /* Watch items render FIELDS, not narrative (owner, Oct 14, 2026):
+     the lead descriptor (the item's form/grade intent, recorded before
+     the dated re-check diary begins), a max-buy where one is on file,
+     and the latest recorded reference figure with its source type.
+     The research diary and thesis prose stay in the data, unrendered;
+     re-checks update fields — they never narrate into the item body.
+     Extraction is conservative: a field with nothing defensible on
+     file is omitted, never invented. */
+  const watchFields = (w: WatchItem) => {
+    const pc = w.priceContext ?? "";
+    const markerRe = /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+20\d{2}\b/g;
+    const marks = [...pc.matchAll(markerRe)];
+    let lead = (marks.length ? pc.slice(0, marks[0]!.index) : pc).trim().replace(/\s*[—–-]+$/, "").trim();
+    if (lead && !/[.!?]$/.test(lead)) lead += ".";
+    const lastSeg = marks.length ? pc.slice(marks[marks.length - 1]!.index) : pc;
+    let maxBuy: string | null = null;
+    const mb = pc.match(/max buy \$([\d,]+)/i) ?? w.actionRule.match(/at or under \$([\d,]+)/i) ?? w.actionRule.match(/under \$([\d,]+)/i);
+    if (mb) maxBuy = `$${mb[1]}`;
+    else if (/no max-buy/i.test(pc)) maxBuy = "Not set";
+    let reference: string | null = null; let sourceType: string | null = null;
+    const pair = lastSeg.match(/TCGplayer-tracked (?:value|list) \$([\d,.]+)\s*\/\s*market \$([\d,.]+)/i);
+    if (pair) { reference = `$${pair[2]} market · $${pair[1]} list`; sourceType = "TCGplayer-tracked"; }
+    else {
+      const range = lastSeg.match(/\$([\d,]+)\s*[–-]\s*\$([\d,]+)/);
+      if (range) reference = `$${range[1]}–$${range[2]}`;
+      else { const single = lastSeg.match(/latest[^$]{0,90}\$([\d,.]+)/i); if (single) reference = `$${single[1]}`; }
+      if (reference) {
+        if (/PriceCharting/i.test(lastSeg)) sourceType = "eBay via PriceCharting";
+        else if (/Fanatics/i.test(lastSeg)) sourceType = "Fanatics Collect";
+        else if (/aggregator/i.test(lastSeg)) sourceType = "Aggregator";
+        else if (/Japanese/i.test(lastSeg)) sourceType = "Japanese sources";
+      }
+    }
+    return { lead, maxBuy, reference, sourceType };
+  };
+  const renderWatchFields = (w: WatchItem, tone: "default" | "light" = "default") => {
+    const f = watchFields(w);
+    const cLead = tone === "light" ? "#fff" : "var(--dim)";
+    const cLabel = tone === "light" ? "rgba(255,255,255,0.78)" : "var(--faint)";
+    const cVal = tone === "light" ? "#fff" : "var(--text)";
+    return (
+      <>
+        {f.lead && <p className="mt-1.5 text-sm leading-snug" style={{ color: cLead }}>{f.lead}</p>}
+        {(f.maxBuy || f.reference) && (
+          <div className="mt-2.5 flex flex-wrap gap-x-6 gap-y-2">
+            {f.maxBuy && <div><p className="text-[10px] font-bold tracking-widest" style={{ color: cLabel }}>MAX BUY</p><p className="num text-sm font-semibold" style={{ color: cVal }}>{f.maxBuy}</p></div>}
+            {f.reference && <div><p className="text-[10px] font-bold tracking-widest" style={{ color: cLabel }}>REFERENCE{f.sourceType ? ` · ${f.sourceType.toUpperCase()}` : ""}</p><p className="num text-sm font-semibold" style={{ color: cVal }}>{f.reference}</p></div>}
+          </div>
+        )}
+        <p className="mt-2 text-sm leading-relaxed" style={tone === "light" ? { color: "#fff" } : undefined}><strong>Rule:</strong><br />{w.actionRule}</p>
+      </>
+    );
+  };
+
   /* Shared card for the WC and Vending hunt groups — same controls as every
      other watchlist item (Watching / Bought / Pass, Pass hides forever)
      plus the genuine marketplace search link. */
@@ -2033,7 +2635,7 @@ export function App() {
     const scout = w.scoutId ? scoutById.get(w.scoutId) : undefined;
     const link = watchSearchLink(w, scout);
     return (
-      <div key={w.id} className={`quiet-panel p-4${i % 2 === 1 ? " quiet-alt" : ""}`}>
+      <div key={w.id} id={`watch-item-${w.id}`} className={`quiet-panel p-4${i % 2 === 1 ? " quiet-alt" : ""}`} style={flashWatchId === w.id ? { boxShadow: "0 0 0 2px var(--accent)" } : undefined}>
         <div className="flex items-start justify-between gap-3">
           <p className="font-semibold leading-snug"><span className="num mr-1.5" style={{ color: "var(--accent-ink)" }}>{i + 1}.</span>{w.name}</p>
           <select aria-label={`Status for ${w.name}`} value={w.status} onChange={e => updateWatch.mutate({ id: w.id, status: e.target.value })} className="shrink-0 rounded-full px-2 py-1 text-xs font-semibold" style={{ border: "1px solid var(--border)", background: "var(--surface-alt)", color: "var(--text)" }}>
@@ -2041,11 +2643,11 @@ export function App() {
           </select>
           <button onClick={() => updateWatch.mutate({ id: w.id, status: "Pass" })} aria-label={`Pass on ${w.name} — remove from page`} className="shrink-0 rounded-full px-3 py-1 text-xs font-bold border" style={{ borderColor: "var(--sell)", color: "var(--sell)", background: "rgba(200,64,42,0.08)" }}>Pass ✕</button>
         </div>
-        <p className="mt-1.5 text-sm font-semibold" style={{ color: "var(--accent-ink)" }}>{w.priceContext}</p>
-        <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--dim)" }}>{w.thesis}</p>
-        <p className="mt-2 text-sm leading-relaxed"><strong>Rule:</strong> {w.actionRule}</p>
+        {renderWatchFields(w)}
+        <WatchAccrualLine points={watchPointsById.get(w.id) ?? []} maxBuyUsd={maxBuyOf(w)} />
+        <WatchManageControls w={w} busy={updateWatch.isPending || removeWatchMut.isPending} onSaveMaxBuy={(id, mb) => updateWatch.mutate({ id, maxBuyUsd: mb })} onRemove={(id) => removeWatchMut.mutate({ id })} />
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-          {scout && <span className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-2.5 py-1" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}><span aria-hidden>{scout.emoji}</span> Scout: {scout.name} · {scout.territory}</span>}
+          {scout && <span className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-2.5 py-1" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}><span aria-hidden>{scout.emoji}</span> Scout: {scout.name} · {scout.territory}</span>}
           {w.lastChecked
             ? <span className="text-[11px]" style={{ color: "var(--faint)" }}>Price checked {w.lastChecked}{w.status !== "Watching" ? ` · Status: ${w.status}` : ""}</span>
             : <span className="text-[11px] font-semibold" style={{ color: "var(--accent-ink)" }}>Awaiting first refresh — no price set yet{w.status !== "Watching" ? ` · Status: ${w.status}` : ""}</span>}
@@ -2059,20 +2661,28 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen relative tod-root" data-phase={todPhase} data-density={density} data-ui-theme={uiTheme} data-event={todNow >= new Date("2026-10-01T00:00:00") && todNow <= new Date("2026-10-31T23:59:59") ? "halloween" : todNow.getMonth() === 10 ? "autumn" : todNow.getMonth() === 11 ? "snow" : "none"} data-tod-instant={todReduced ? "1" : "0"} style={{ color: "var(--text)", "--phase-edge": todPanel.edge, "--phase-glow": todPanel.glow } as CSSProperties}>
-      {/* ATMOSPHERE (Glass Vault phase 2): data surfaces sit on the
-          vapor sky ONLY — gradient + glows; the blurred city layer
-          was removed at the owner's verdict ("city bg looks
-          terrible"). The town survives as (a) the full-screen living
-          place on Scouts › Town — TownBackground exactly as before —
-          and (b) the fixed TownBand window at the bottom of Home,
-          showing the town's real pixel art, never blurred. */}
+    <div className="min-h-screen relative tod-root" data-phase={todPhase} data-density={density} data-ui-theme={uiTheme} data-launcher-open={launcherGroup ? "1" : "0"} data-event={todNow >= new Date("2026-10-01T00:00:00") && todNow <= new Date("2026-10-31T23:59:59") ? "halloween" : todNow.getMonth() === 10 ? "autumn" : todNow.getMonth() === 11 ? "snow" : "none"} data-tod-instant={todReduced ? "1" : "0"} style={{ color: "var(--text)", "--phase-edge": todPanel.edge, "--phase-glow": todPanel.glow } as CSSProperties}>
+      {/* BACKDROP (Oct 13, owner model): on every data surface the
+          TOWN is the page backdrop — vapor sky up top, the full
+          town scene anchored to the bottom, a scrim over the
+          content zone — and the glass panels frost it where they
+          overlap. The town art itself is never blurred. Scouts ›
+          Town keeps the full-screen living place exactly as before
+          (TownBackground, no backdrop wrapper, no reveal). */}
       {!showOpen && !detailPageOpen && navGroup === "scouts" && activeSub === "town"
         ? <TownBackground phase={todPhase} hourFloat={todHourFloat} milestones={data?.v2.milestones ?? []} />
-        : (<>
-            {!detailPageOpen && inGroup("home") && <TownBand phase={todPhase} hourFloat={todHourFloat} milestones={data?.v2.milestones ?? []} />}
-          </>)}
-      <FreeRoamingScouts scouts={data.scouts} pinnedByScout={pinnedByScout} sightingByScout={sightingByScout} />
+        : <><TownBackdrop phase={todPhase} hourFloat={todHourFloat} milestones={data?.v2.milestones ?? []} /><EdgeScrims /></>}
+      {/* SCOUTS ON MOBILE (Oct 13, 2026 — owner: "Let's remove
+          scouts in mobile"): at phone widths the roaming scout
+          layer — the sprites AND the Pause/Hide pills — is not
+          mounted at all on data surfaces (Home, Deals, Vault,
+          Insights, card detail, Show Mode chrome): no DOM, no rAF
+          loop, no listeners. The one exception is the Town PAGE,
+          which keeps its characters at every width. Desktop renders
+          the layer exactly as before. */}
+      {(!isMobileWidth || (!showOpen && !detailPageOpen && navGroup === "scouts" && activeSub === "town")) && (
+        <FreeRoamingScouts scouts={data.scouts} pinnedByScout={pinnedByScout} sightingByScout={sightingByScout} suppressed={launcherGroup != null} />
+      )}
       <SafeAreaTopScrim backgroundColor="transparent" />
       <main className="relative z-10 mx-auto max-w-7xl px-4 pb-20 pt-6 sm:px-8">
         <h1 className="sr-only">Pokémon Card Dashboard — collection vault, live scout deals, market terminal and town</h1>
@@ -2089,8 +2699,9 @@ export function App() {
                with the big portfolio value). MIDDLE: the five grouped
                nav tabs (Home · Deals · Vault · Scouts · Insights,
                aria-current on the active tab). FAR RIGHT: the compact
-               town-clock chip (time + day/night phase icon, always
-               Auto) at the bar's far right edge. Show Mode is NOT in
+               town-clock chip (time + town phase icon — the town
+               clock, which keeps its own time-of-day cycle as art)
+               at the bar's far right edge. Show Mode is NOT in
                this bar at any width — on mobile it is the floating
                camera button (see .show-mode-fab below). There is NO
                density switch in the bar: the app renders Terminal
@@ -2139,9 +2750,10 @@ export function App() {
                the chips previously rendered directly on the pixel-town
                grass (glass tint over grass: dim text measured ~1.28:1).
                On the slab, unselected chip text (dim on surface-2) is
-               7.45:1 Night / 6.25:1 Day and the selected chip (text on
-               surface-alt) is 12.86:1 / 11+ :1. The town is background
-               only — no interactive chrome sits on the art. ——— */}
+               7.45:1 and the selected chip (text on surface-alt) is
+               12.86:1 (Night Vapor, permanently). The town is
+               background only — no interactive chrome sits on the
+               art. ——— */}
         {/* ——— LAUNCHER SUB-NAV (Glass Vault phase 1) ———
                The sub-chip row is REPLACED by the Deel-style launcher:
                a floating glass panel of large icon tiles (≥44px), each
@@ -2167,10 +2779,11 @@ export function App() {
                   {g.subs.map(s => { const meta = LAUNCHER_META[s.id]; return (
                     <button key={s.id} onClick={() => { closeLauncher(false); goNav(g.id, s.id); }} aria-current={activeSub === s.id && navGroup === g.id ? "page" : undefined} aria-label={`Go to ${g.name}: ${s.label} — ${meta.desc}`} className="launcher-tile">
                       <span className="lt-ic" aria-hidden><LauncherGlyph id={s.id} /></span>
-                      <span style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      <span className="lt-text" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <span className="lt-name">{s.label}</span>
                         <span className="lt-desc">{meta.desc}</span>
                       </span>
+                      <span className="lt-chevron" aria-hidden>›</span>
                     </button>
                   ); })}
                 </div>
@@ -2188,51 +2801,107 @@ export function App() {
                lives here: header, holo-tilt slab, stress test / flags,
                official / vault / checked values, Decision, market
                signals (bid/ask · pump/pop · Exit Desk), chart, History
-               (sales evidence), provenance panels, the value
-               editor — and BELOW all of it, the Lineage section scoped
+               (sales evidence), provenance + Giratina panels, the value
+               editor — and BELOW all of it, the remaining sections
                to this card only. ——— */}
         {selected && (
           <section aria-label={`Card detail page — ${selected.name}`} className="card-detail-page">
-            {/* Back row sits on a solid .town-readable bar (design
-                pass, Oct 13): it previously floated on the town grass
-                with a near-transparent glass button. */}
-            <div className="quiet-panel flex items-center gap-3 px-3 py-2">
-              <button ref={detailBackRef} onClick={closeDetail} aria-label={`Back — return to the view you came from, leaving ${selected.name} detail`} className="touch-target inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold border" style={{ borderColor: "var(--border)", color: "var(--text)", background: "var(--surface-alt)", minHeight: 44 }}>← Back</button>
-              <span className="text-xs font-semibold" style={{ color: "var(--dim)" }}>Card detail</span>
+            {/* Back row (owner, Oct 13): NO container bar, NO label —
+                just a borderless quiet text button standing on the
+                backdrop, top-left above the title block. The ≥44px
+                target comes from padding, not a drawn box; hover /
+                press only brighten it; keyboard focus keeps the
+                global slim :focus-visible outline. */}
+            <div className="flex items-center">
+              <button ref={detailBackRef} onClick={closeDetail} aria-label={`Back — return to the view you came from, leaving ${selected.name} detail`} className="back-link touch-target inline-flex items-center gap-1.5 px-2 py-2 -ml-2 text-sm font-bold" style={{ minHeight: 44 }}>← Back</button>
             </div>
-            {/* PHASE 2 DETAIL LAYOUT (owner): two columns on desktop —
-                LEFT the slab alone on the sky (no stage, no panel —
-                HoloSlab renders just the case) with the compact value
-                tiles stacked under it; RIGHT everything else, in its
-                current order: header text, then the quiet content
-                panel, then the scoped Lineage panel. Mobile stacks in
-                the same order: slab, tiles, right column. */}
+            {/* DETAIL LAYOUT (owner, Oct 13 — supersedes phase 2):
+                the TITLE BLOCK is the page header (below), then two
+                columns on desktop — LEFT the slab alone on the
+                backdrop (no stage, no panel) with the value tiles
+                under it; RIGHT only THREE sections: Decision, Cost
+                basis, Market signals. There is NO outer frame around
+                the sections — each renders as its own individual
+                panel directly on the backdrop. EVERYTHING ELSE
+                (Forecast, the price/sales chart, provenance, the
+                Giratina panels, sales history, the value editor,
+                the rest) files UNDERNEATH the two-column zone
+                at full page width, in its existing order. Mobile
+                stacks: title, slab, tiles, the three sections, then
+                the full-width flow. */}
+            {/* TITLE BLOCK = PAGE HEADER (owner, Oct 13): directly
+                under the Back row, full width, above the two-column
+                zone — kicker, name, meta, price and the call pill
+                (right, in the removed button's old spot) all live
+                here, NOT in the right column. Mobile
+                order: Back → title → slab → value tiles → Decision →
+                Cost → Market signals → full-width flow. */}
+            {/* Layout (owner, Oct 13): ROW 1 = kicker left + call
+                pill right, tops aligned on the kicker row. The pill
+                must NOT steal horizontal space from the title: name,
+                meta and price run the FULL content width below,
+                wrapping only at the page gutters. */}
+            {/* Title block geometry (owner, Oct 14 — supersedes the
+                Oct 13 price-under-meta placement): TWO COLUMNS.
+                LEFT = kicker (grader · cert), name, meta — the name
+                wraps inside this column only. RIGHT RAIL = the call
+                pill on top (its kicker-row seat) with the OFFICIAL
+                PRICE directly UNDER it, right-aligned to the gutter
+                (pill right edge = price right edge). One price, one
+                place. The rail is content-compact so name and price
+                can never collide at any width. */}
+            <div className="mt-6 sm:mt-8 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="kicker" style={{ color: "var(--accent-ink)" }}>{selected.grader} {selected.grade} · Cert {selected.cert}</p>
+                <h3 className="font-display text-3xl font-bold mt-1.5">{selected.name}</h3>
+                <p className="text-sm" style={{ color: "var(--dim)" }}>{selected.year} · {selected.setName} #{selected.number} · {selected.era}</p>
+              </div>
+              <div className="shrink-0 flex flex-col items-end">
+                <span title={selected.advisorCall} className="shrink-0 whitespace-nowrap text-center text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: callColor(selected.advisorCall), color: "var(--ink-on-fill)", width: 104 }}>{pillCall(selected.advisorCall)}</span>
+                <p className="num font-display text-3xl sm:text-4xl font-black mt-2.5 text-right">{fmt(selected.effectiveUsd)}</p>
+              </div>
+            </div>
             <div className="mt-4 grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] items-start">
               <div>
                 <HoloSlab card={selected} reduced={todReduced} />
                 <div className="mt-4 grid gap-2.5 text-sm">
-                  <div className="rounded-xl p-3" style={{ background: "var(--surface-alt)" }}><p className="kicker" style={{ color: "var(--faint)" }}>Official value</p><p className="num text-xl font-bold mt-1">{fmt(selected.effectiveUsd)}</p><p className="text-[11px]" style={{ color: "var(--dim)" }}>{OWNER_KEPT_CERTS_CLIENT.includes(selected.cert) ? "Owner-kept — locked, not floated to comps" : selected.checkedUsd != null ? `Comp-based — latest live check${selected.lastChecked ? ` ${selected.lastChecked}` : ""}` : "Vault estimate — no comp check yet"}</p></div>
-                  <div className="rounded-xl p-3" style={{ background: "var(--surface-alt)" }}><p className="kicker" style={{ color: "var(--faint)" }}>Vault estimate</p><p className="num text-xl font-bold mt-1">{fmt(selected.vaultUsd)}</p></div>
-                  <div className="rounded-xl p-3" style={{ background: "var(--surface-alt)" }}><p className="kicker" style={{ color: "var(--faint)" }}>Checked</p><p className="num text-xl font-bold mt-1">{fmt(selected.checkedUsd)}</p>{selected.lastChecked && <p className="text-[11px]" style={{ color: "var(--dim)" }}>{selected.lastChecked}</p>}</div>
+                  <div className="quiet-panel rounded-xl p-3"><p className="kicker" style={{ color: "var(--faint)" }}>Official value</p><p className="num text-xl font-bold mt-1">{fmt(selected.effectiveUsd)}</p><p className="text-[11px]" style={{ color: "var(--dim)" }}>{selected.checkedUsd != null ? `Comp-based — latest live check${selected.lastChecked ? ` ${selected.lastChecked}` : ""}` : "Vault estimate — no comp check yet"}</p></div>
+                  <div className="quiet-panel rounded-xl p-3"><p className="kicker" style={{ color: "var(--faint)" }}>Vault estimate</p><p className="num text-xl font-bold mt-1">{fmt(selected.vaultUsd)}</p></div>
+                  <div className="quiet-panel rounded-xl p-3"><p className="kicker" style={{ color: "var(--faint)" }}>Checked</p><p className="num text-xl font-bold mt-1">{fmt(selected.checkedUsd)}</p>{selected.lastChecked && <p className="text-[11px]" style={{ color: "var(--dim)" }}>{selected.lastChecked}</p>}</div>
+                  {/* POPULATION TILE (owner, Oct 13): part of this
+                      value-tile stack — the card's OWN pop figure
+                      prominent (pop at its grade where recorded,
+                      else total pop), subline with the rest as
+                      stored (total · higher count · source/date).
+                      Renders ONLY when pop data is on file; the
+                      standalone Population prose block that used to
+                      sit in the full-width sections below is REMOVED
+                      (data lives here now, never twice). Comparative
+                      prose about other cards does NOT move here. */}
+                  {(() => {
+                    const popRow = (data?.v2.pops ?? []).find(pp => pp.cert === selected.cert);
+                    if (!popRow && !selected.popInfo) return null;
+                    const prominent = popRow ? (popRow.popGrade ?? popRow.popTotal) : null;
+                    const higherM = selected.popInfo?.match(/(\d[\d,]*)\s+higher/);
+                    const sourceM = selected.popInfo?.match(/\(([^)]+)\)/);
+                    const parts: string[] = [];
+                    if (popRow) {
+                      parts.push(popRow.popGrade != null ? `${selected.grader} ${selected.grade} pop` : "Total pop");
+                      if (popRow.popGrade != null && popRow.popTotal != null && popRow.popTotal !== popRow.popGrade) parts.push(`total ${popRow.popTotal.toLocaleString()}`);
+                    }
+                    if (higherM?.[1]) parts.push(`${higherM[1]} higher`);
+                    if (sourceM?.[1]) parts.push(sourceM[1]);
+                    else if (popRow) parts.push(`recorded ${popRow.recordedAt}`);
+                    return (
+                      <div className="quiet-panel rounded-xl p-3"><p className="kicker" style={{ color: "var(--faint)" }}>Population</p><p className="num text-xl font-bold mt-1">{prominent != null ? prominent.toLocaleString() : selected.popInfo}</p>{parts.length > 0 && <p className="text-[11px]" style={{ color: "var(--dim)" }}>{parts.join(" · ")}</p>}</div>
+                    );
+                  })()}
                 </div>
               </div>
               <div className="min-w-0">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="kicker" style={{ color: "var(--accent-ink)" }}>{selected.grader} {selected.grade} · Cert {selected.cert}</p>
-                <h3 className="font-display text-3xl font-bold mt-1.5">{selected.name}</h3>
-                <p className="text-sm" style={{ color: "var(--dim)" }}>{selected.year} · {selected.setName} #{selected.number} · {selected.era}</p>
-                <span className="mt-2 inline-block text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: callColor(selected.advisorCall), color: "var(--ink-on-fill)" }}>{selected.advisorCall}</span>
-              </div>
-              <span className="flex gap-2 shrink-0">
-                <button aria-label={`Open lineage watch for ${selected.name} in Vault, Lineage`} onClick={() => { setLineageCert(selected.cert); goNav("vault", "lineage"); }} className="touch-target rounded-full px-3 py-1 text-sm font-bold" style={{ border: "1px solid var(--accent)", color: "var(--accent-ink)" }}>🧬 Lineage</button>
-                
-              </span>
-            </div>
-            <div className="quiet-panel mt-4 p-5 sm:p-6" style={{ borderColor: "rgba(217,164,65,0.35)" }}>
-            {(() => { const rf = (data?.v2.rocket.holdingFlags ?? []).find(f => f.cert === selected.cert); return rf ? <p className="mb-3 text-sm leading-relaxed rounded-xl px-3.5 py-2.5" style={{ background: "rgba(212,58,47,0.08)", border: "1px solid rgba(212,58,47,0.45)" }}><strong style={{ color: "var(--sell)" }}>🚀 Rocket stress test:</strong> the cheapest live ask for this card is <strong className="num">{fmt(rf.bestAsk)}</strong> — <strong>▼ {rf.pctUnder.toFixed(1)}% under</strong> the held {fmt(rf.heldValue)} value. Asks are not sales; Rocket files it as an unconfirmed premium, not a verdict. See Risk for the full list.</p> : null; })()}
+            {(() => { const rf = (data?.v2.rocket.holdingFlags ?? []).find(f => f.cert === selected.cert); return rf ? <div className="quiet-panel mt-4 px-3.5 py-2.5 text-sm leading-relaxed" style={{ borderColor: "rgba(212,58,47,0.45)" }}><p><strong style={{ color: "var(--sell)" }}>🚀 Rocket stress test:</strong></p><p className="mt-1">the cheapest live ask for this card is <strong className="num">{fmt(rf.bestAsk)}</strong> — <strong>▼ {rf.pctUnder.toFixed(1)}% under</strong> the held {fmt(rf.heldValue)} value. Asks are not sales; Rocket files it as an unconfirmed premium, not a verdict. See Risk for the full list.</p></div> : null; })()}
             {(() => { const dec = decisionFor(selected, { verifiedSales: verifiedSales.length, changePct: cardChange30(selected.cert), sharePct: selected.effectiveUsd != null && base > 0 ? (selected.effectiveUsd / base) * 100 : null }); return (
-              <div className="mt-4 rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }} role="group" aria-label={`Decision for ${selected.name}: ${selected.advisorCall} — pros and cons`}>
+              <div className="quiet-panel mt-4 p-4 sm:p-5" role="group" aria-label={`Decision for ${selected.name}: ${selected.advisorCall} — pros and cons`}>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="kicker" style={{ color: "var(--faint)" }}>Decision</p>
                   <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: callColor(selected.advisorCall), color: "var(--ink-on-fill)" }}>{selected.advisorCall}</span>
@@ -2255,6 +2924,7 @@ export function App() {
                    directly under the Decision block; editing lives
                    inside the block. Collection rows stay clean. ——— */}
             <CardCostBlock card={selected} onSave={(args) => updateCostMut.mutate(args)} saving={updateCostMut.isPending} />
+            <CardDispositionBlock card={selected} busy={dispositionMut.isPending} onSubmit={(args) => dispositionMut.mutate(args)} />
                         {/* ——— MARKET SIGNALS — this card's bid/ask row, Pump
                    Detector score, pop-dilution state and Exit Desk
                    actions, pulled from the same v2 data the Deals ›
@@ -2266,58 +2936,74 @@ export function App() {
               const drafts = (data?.v2.exits ?? []).filter(d => d.cert === selected.cert);
               if (!spread && !pump && !pop && drafts.length === 0) return null;
               return (
-                <div className="mt-4 rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }} role="group" aria-label={`Market signals for ${selected.name} — bid and ask, pump and pop, Exit Desk`}>
-                  <p className="kicker" style={{ color: "var(--faint)" }}>⚖️ Market signals — bid/ask · pump/pop · Exit Desk</p>
+                <div className="quiet-panel mt-4 p-4 sm:p-5" role="group" aria-label={`Market signals for ${selected.name} — bid and ask, pump and pop, sell drafts`}>
+                  <p className="kicker" style={{ color: "var(--faint)" }}>⚖️ Market signals — bid/ask · pump/pop · sell drafts</p>
                   <div className="mt-3 grid gap-2 text-sm">
                     {spread && (
                       <p className="rounded-xl px-3 py-2 leading-relaxed" style={{ background: "var(--surface-alt)" }}>
-                        <strong>Bid / Ask:</strong> Ask <strong className="num">{fmt(spread.bestAsk)}</strong> <span style={{ color: "var(--dim)" }}>({spread.askSource})</span> · Bid <strong className="num">{fmt(spread.highestBid)}</strong> <span style={{ color: "var(--dim)" }}>({spread.bidSource})</span> · Last sale <strong className="num">{fmt(spread.lastSale)}</strong> <span style={{ color: "var(--dim)" }}>({spread.saleSource})</span> · Spread <strong className="num">{spread.spreadPct == null ? "—" : spread.spreadPct.toFixed(1) + "%"}</strong>
+                        <strong>Bid / Ask:</strong>
+                        <span className="block mt-1">Ask — <strong className="num">{fmt(spread.bestAsk)}</strong> <span style={{ color: "var(--dim)" }}>({spread.askSource})</span></span>
+                        <span className="block">Bid — <strong className="num">{fmt(spread.highestBid)}</strong> <span style={{ color: "var(--dim)" }}>({spread.bidSource})</span></span>
+                        <span className="block">Last sale <strong className="num">{fmt(spread.lastSale)}</strong> <span style={{ color: "var(--dim)" }}>({spread.saleSource})</span></span>
+                        <span className="block">Spread — <strong className="num">{spread.spreadPct == null ? "—" : spread.spreadPct.toFixed(1) + "%"}</strong></span>
                         {spread.warning && <span className="block mt-1 font-bold" style={{ color: "var(--sell)" }}>⚠ Liquidity warning: {spread.warning}</span>}
                       </p>
                     )}
                     {pump && (
                       <p className="rounded-xl px-3 py-2 leading-relaxed" style={{ background: "var(--surface-alt)" }}>
-                        <strong>Pump Detector:</strong> <span className="text-[11px] font-black px-2 py-0.5 rounded-full" style={{ background: pump.level === "High" ? "var(--sell)" : pump.level === "Watch" ? "var(--trim)" : "rgba(63,182,143,0.25)", color: pump.level === "High" || pump.level === "Watch" ? "var(--ink-on-fill)" : "var(--text)" }}>{pump.level.toUpperCase()} · {pump.score}</span>
-                        {pump.factors.length > 0 && <span style={{ color: "var(--dim)" }}> — {pump.factors.join(" · ")}</span>}
+                        <span className="flex flex-wrap items-center gap-2"><strong>Pump Detector:</strong> <span className="text-[11px] font-black px-2 py-0.5 rounded-full" style={{ background: pump.level === "High" ? "var(--sell)" : pump.level === "Watch" ? "var(--trim)" : "rgba(63,182,143,0.25)", color: pump.level === "High" || pump.level === "Watch" ? "var(--ink-on-fill)" : "var(--text)" }}>{pump.level.toUpperCase()} · {pump.score}</span></span>
+                        {pump.factors.length > 0 && <span className="block mt-1" style={{ color: "var(--dim)" }}>{pump.factors.join(" · ")}</span>}
                       </p>
                     )}
                     {pop && (
                       <p className="rounded-xl px-3 py-2 leading-relaxed" style={{ background: pop.alert ? "rgba(224,90,58,0.10)" : "var(--surface-alt)", border: pop.alert ? "1px solid var(--sell)" : "1px solid transparent" }}>
-                        <strong>Pop dilution:</strong> <span className="num">pop {pop.popTotal.toLocaleString()}{pop.popGrade != null ? ` (grade pop ${pop.popGrade.toLocaleString()})` : ""}</span> · <span style={{ color: "var(--dim)" }}>{pop.velocityPct == null ? "Velocity: baseline only — first refresh comparison pending" : `Velocity: ${pop.velocityPct > 0 ? "+" : ""}${pop.velocityPct}%`}{pop.alert ? " · ⚠ ALERT — scarcity eroding" : ""} · recorded {pop.recordedAt}</span>
+                        <strong>Pop dilution:</strong>
+                        <span className="num block mt-1">pop {pop.popTotal.toLocaleString()}{pop.popGrade != null && pop.popGrade !== pop.popTotal ? ` (grade pop ${pop.popGrade.toLocaleString()})` : ""}</span>
+                        <span className="block" style={{ color: "var(--dim)" }}>{pop.velocityPct == null ? "Velocity: baseline only — first refresh comparison pending" : `Velocity: ${pop.velocityPct > 0 ? "+" : ""}${pop.velocityPct}%`}{pop.alert ? " · ⚠ ALERT — scarcity eroding" : ""} · recorded {pop.recordedAt}</span>
                       </p>
                     )}
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <button onClick={() => exitDraftMut.mutate({ cert: selected.cert })} disabled={exitDraftMut.isPending} aria-label={`Generate Exit Desk listing draft for ${selected.name}`} className="touch-target rounded-full px-4 py-2 text-sm font-bold border disabled:opacity-50" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)" }}>✎ Draft listing (Exit Desk)</button>
-                    {exitDraftMut.isSuccess && <span className="text-xs" style={{ color: "var(--dim)" }}>Draft created — it also lives on Deals › Market, Exit Desk ✓</span>}
+                    <button onClick={() => exitDraftMut.mutate({ cert: selected.cert })} disabled={exitDraftMut.isPending} aria-label={`Generate listing draft for ${selected.name} — Sell page`} className="touch-target rounded-full px-4 py-2 text-sm font-bold border disabled:opacity-50" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)" }}>✎ Draft listing (Sell)</button>
+                    {exitDraftMut.isSuccess && <span className="text-xs" style={{ color: "var(--dim)" }}>Draft created — it also lives on Vault › Sell ✓</span>}
                   </div>
                   {drafts.length > 0 && (
                     <div className="mt-3 grid gap-3">
-                      {drafts.map(d => <ExitDraftCard key={d.id} draft={d} onUpdate={(args) => exitUpdateMut.mutate(args)} />)}
+                      {drafts.map(d => <ExitDraftCard key={d.id} draft={d} onUpdate={(args) => exitUpdateMut.mutate(args)} onDelete={(args) => exitDeleteMut.mutate(args)} />)}
                     </div>
                   )}
                 </div>
               );
             })()}
+              </div>
+            </div>
+            {/* ——— FULL-WIDTH FLOW (owner, Oct 13): everything below
+                   the two-column zone files underneath at full page
+                   width, each block its own panel directly on the
+                   backdrop — Forecast first, then the chart,
+                   provenance, the Giratina panels, sales history, the
+                   value editor and the rest, in the order the
+                   blocks have always run. ——— */}
             {/* ——— FORECAST (fc-v1) — per-card value ranges at
                    30/90/180 days from VERIFIED SOLD COMPS ONLY, each
                    with its confidence grade and evidence basis.
                    Insufficient-signal and pump-suspended states are
                    rendered honestly — a card with no honest range
-                   shows why, never a made-up number. Locked
-                   (owner-kept) cards forecast MARKET value and say
-                   so; the kept figure never moves. ——— */}
+                   shows why, never a made-up number. Every card
+                   forecasts from its verified comps against its
+                   comp-based value — no card is locked (the
+                   owner-kept lock system was removed Oct 14, 2026).
+                   ——— */}
             {(() => {
               const fc = (data?.forecasts ?? []).find(f => f.cert === selected.cert);
               if (!fc) return null;
               const confColor = (cf: string) => cf === "A" ? "var(--hold)" : cf === "B" ? "var(--accent-ink)" : "var(--dim)";
               return (
-                <div className="mt-4 rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }} role="group" aria-label={`Forecast for ${selected.name} — value ranges from verified sales only`}>
+                <div className="quiet-panel mt-4 p-4 sm:p-5" role="group" aria-label={`Forecast for ${selected.name} — value ranges from verified sales only`}>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="kicker" style={{ color: "var(--faint)" }}>🔮 Forecast — verified-sales ranges <span className="ml-1 px-1.5 py-0.5 rounded-full" style={{ border: "1px solid var(--accent)", color: "var(--accent-ink)" }}>SAMPLE DATA — DEMO</span></p>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ border: "1px solid var(--hairline)", color: "var(--dim)" }}>Model fc-v1</span>
                   </div>
-                  {fc.locked && <p className="mt-2.5 text-sm font-semibold rounded-xl px-3 py-2" style={{ background: "var(--surface-alt)" }}>Market-value forecast — your kept value stays {fmt(fc.keptValue)}</p>}
                   {fc.state === "open" && (
                     <div className="mt-3 grid gap-2">
                       {fc.horizons.map(h => (
@@ -2342,181 +3028,120 @@ export function App() {
                 </div>
               );
             })()}
-            {/* ——— PRICE / SALES CHART — relocated into the detail page
-                   (Oct 9): the standalone per-card panels are gone from
-                   Home/Growth; each card's chart lives here, with the
-                   same series and honesty captions. ——— */}
+            {/* ——— PRICE / SALES CHART — OWN VERIFIED SALES ONLY
+                   (owner, Oct 13): every card's chart plots ONLY its
+                   own classified verified sold comps from sales
+                   evidence (isVerifiedCompSale) — no borrowed series,
+                   no category examples, no aggregator trends, no kept
+                   values, no unverified reports. A sibling cert's
+                   verified sale of this card/grade plots as a
+                   gold-diamond point labelled "sibling cert". Fewer
+                   than 2 comp points → NO chart, just the quiet
+                   not-enough line (a single point keeps its richer
+                   single-point note below). ——— */}
             {(() => {
-              type DetailChart = { title: string; sub: string; data: { label: string; price: number }[]; color: string; seriesLabel: string; caption: ReactNode; aria: string };
-              let chart: DetailChart | null = null;
-              if (verifiedSales.length >= 2) {
-                const sorted = [...verifiedSales].sort((a, b) => a.saleDate.localeCompare(b.saleDate));
-                chart = {
-                  title: `${selected.name} — verified sales`, sub: "Verified sold comps on file for this cert", data: sorted.map(s => ({ label: s.saleDate, price: s.price })), color: "var(--accent)", seriesLabel: "Verified sale",
-                  caption: <>Plotted from this card&apos;s verified sales evidence (listed under History below) — verified comps only; unverified signals are never plotted.</>,
-                  aria: `Line chart of verified sales for ${selected.name}: ${sorted.map(s => `${fmt(s.price)} on ${s.saleDate}`).join(", ")}.`,
-                };
-              }
-              const dc = chart;
+              const compSales = selectedSales.filter(isVerifiedCompSale).slice().sort((a, b) => a.saleDate.localeCompare(b.saleDate));
+              type ChartPoint = { label: string; price: number; sibling?: boolean; siblingCert?: string };
+              const points: ChartPoint[] = compSales.map(sx => {
+                const sib = /sibling cert\s*(\d+)/i.exec(sx.description ?? "");
+                return sib ? { label: sx.saleDate, price: sx.price, sibling: true, siblingCert: sib[1] } : { label: sx.saleDate, price: sx.price };
+              });
+              const siblingPoint = points.find(pt => pt.sibling);
+              const enough = points.length >= 2;
+              const CompDot = (props: any) => {
+                const { cx, cy, payload } = props;
+                if (cx == null || cy == null) return <g />;
+                if (payload?.sibling) return (
+                  <g>
+                    <rect x={cx - 5} y={cy - 5} width={10} height={10} transform={`rotate(45 ${cx} ${cy})`} fill="#f2c14e" stroke="#0b0c0f" strokeWidth={2} />
+                    <text x={cx} y={cy - 13} textAnchor="middle" fontSize={10} fill="var(--dim)">sibling cert</text>
+                  </g>
+                );
+                return <circle cx={cx} cy={cy} r={4} fill="var(--accent)" stroke="#0b0c0f" strokeWidth={2} />;
+              };
               return (
                 <>
-                  {dc && (
-                    <div className="mt-4 rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
-                      <p className="font-display font-bold">{dc.title}</p>
-                      <p className="text-xs mt-0.5" style={{ color: "var(--dim)" }}>{dc.sub}</p>
-                      <div className="mt-3" style={{ height: 210 }} role="img" aria-label={dc.aria}>
+                  {enough ? (
+                    <div className="quiet-panel mt-4 p-4 sm:p-5">
+                      <p className="font-display font-bold">{selected.name} — verified sales</p>
+                      <p className="text-xs mt-0.5" style={{ color: "var(--dim)" }}>Verified sold comps only</p>
+                      <div className="mt-3" style={{ height: 210 }} role="img" aria-label={`Line chart of verified sales for ${selected.name}: ${points.map(pt => `${fmt(pt.price)} on ${pt.label}${pt.sibling ? ` (sibling cert ${pt.siblingCert})` : ""}`).join(", ")}.`}>
                         <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={dc.data} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
+                          <LineChart data={points} margin={{ top: 14, right: 12, bottom: 0, left: 4 }}>
                             <CartesianGrid stroke="var(--border)" strokeDasharray="3 6" vertical={false} />
                             <XAxis dataKey="label" tick={chartTick} axisLine={{ stroke: "var(--border)" }} tickLine={false} interval={0} angle={-18} textAnchor="end" height={44} />
                             <YAxis domain={["auto", "auto"]} tick={chartTick} axisLine={false} tickLine={false} tickFormatter={(v: number) => "$" + v.toLocaleString()} width={56} />
-                            <Tooltip formatter={(v: any) => [fmt(Number(v)), dc.seriesLabel]} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_TEXT} itemStyle={CHART_TOOLTIP_TEXT} />
-                            <Line type="monotone" dataKey="price" stroke={dc.color} strokeWidth={2.5} dot={{ r: 4, fill: dc.color, stroke: "#0b0c0f", strokeWidth: 2 }} />
+                            <Tooltip formatter={(v: any, _n: any, item: any) => [fmt(Number(v)) + (item?.payload?.sibling ? " · sibling cert" : ""), "Verified sale"]} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_TEXT} itemStyle={CHART_TOOLTIP_TEXT} />
+                            <Line type="monotone" dataKey="price" stroke="var(--accent)" strokeWidth={2.5} dot={<CompDot />} />
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
-                      <p className="text-xs leading-relaxed" style={{ color: "var(--faint)" }}>{dc.caption}</p>
+                      {siblingPoint && <p className="text-xs leading-relaxed" style={{ color: "var(--faint)" }}>◆ {siblingPoint.label} — sibling cert {siblingPoint.siblingCert} · {fmt(siblingPoint.price)}: a verified sale of this card/grade — a different copy of the same card.</p>}
+                    </div>
+                  ) : points.length === 1 ? (
+                    <div className="quiet-panel mt-4 p-4 flex items-start gap-3">
+                      <span className="mt-1 w-3 h-3 rounded-full shrink-0" style={{ background: "var(--teal)", boxShadow: "0 0 0 4px rgba(53,181,165,0.18)" }} aria-hidden />
+                      <p className="text-sm leading-relaxed" style={{ color: "var(--dim)" }}><strong style={{ color: "var(--text)" }}>{selected.name} — {selected.grader} {selected.grade}: single verified sale, {fmt(points[0]!.price)} ({points[0]!.label}).</strong> One dated point in evidence{selected.checkedUsd != null ? ` (checked value ${fmt(selected.checkedUsd)})` : ""} — a trend line needs two points, so this stays a single marker in this card&apos;s detail rather than an invented slope.</p>
+                    </div>
+                  ) : (
+                    <div className="quiet-panel mt-4 px-4 py-3">
+                      <p className="text-sm" style={{ color: "var(--dim)" }}>Not enough verified sales to chart yet — only this card&apos;s own verified sold comps are charted.</p>
                     </div>
                   )}
-                                  </>
+                </>
               );
             })()}
-                                                {selected.popInfo && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>Population: {selected.popInfo}</p>}
-            {selected.notes && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>{selected.notes}</p>}
+            {/* The "Provenance / acquisition" blocks (the Gengar Prime
+                trade, on Giratina + Ditto) are REMOVED from the detail
+                page (owner, Oct 13) — UI only: the acquisition facts
+                stay in the cards' notes/data and the project record. */}
+            {/* BOTH standalone prose blocks REMOVED (owner, Oct 13):
+                (1) the "Population: …" prose line — its data now
+                lives in the POPULATION tile in the value stack above
+                (this card's own numbers only; the Gengar Prime
+                comparison did not move). (2) the sibling-cert
+                provenance line — an orphan leftover of the removed
+                Lineage feature; the sale itself remains in
+                Recent sales + sales_evidence. Other cards' stored
+                notes still render below as before; this card's stored
+                notes (the stale Oct 8 market-watch narrative with a
+                raw listing URL) do not render. Stored data untouched. */}
+            {/* HISTORY / ORIGIN NOTE BLOCK REMOVED SITE-WIDE (owner,
+                Oct 13): the card's stored notes no longer render as a
+                standalone prose block on ANY detail page (the Mega
+                Gengar "Added from photo Oct 8 2026 — was missing from
+                CSV…" block was the named instance). UI removal only —
+                the notes stay in the record; other systems read them. */}
 
-            {unverifiedSales.map(s => (
-              <div key={s.id} className="mt-4 rounded-2xl p-4 border-2 border-dashed" style={{ borderColor: "var(--sell)", background: "rgba(200,64,42,0.09)" }} role="note" aria-label="Unverified sale signal">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-black px-2 py-1 rounded-full tracking-wider" style={{ background: "var(--red)", color: "var(--ink-on-fill)" }}>⚠ UNVERIFIED</span>
-                  <span className="text-[11px] font-bold px-2 py-1 rounded-full" style={{ border: "1px solid var(--sell)", color: "var(--sell)" }}>Seller-reported / unverified</span>
-                  <span className="num font-display text-2xl font-black ml-auto" style={{ color: "var(--sell)" }}>{fmt(s.price)}</span>
-                </div>
-                                <p className="mt-2.5 text-sm leading-relaxed font-medium">Unverified sale reported at {fmt(s.price)} on {s.saleDate} — not yet verified.</p>
-                <div className="mt-2.5 grid gap-1 text-xs sm:grid-cols-2" style={{ color: "var(--dim)" }}>
-                  <p>Grade: <strong style={{ color: "var(--text)" }}>{selected.grader} {selected.grade}</strong></p>
-                  <p>Shown as: <strong style={{ color: "var(--text)" }}>as reported by the seller</strong></p>
-                  <p>Type: <strong style={{ color: "var(--text)" }}>{s.source}</strong></p>
-                  <p>Reported by: <strong style={{ color: "var(--text)" }}>the seller</strong> · Report date: <strong style={{ color: "var(--text)" }}>{s.saleDate}</strong> (date is when it was reported)</p>
-                </div>
-                <p className="mt-2.5 text-xs leading-relaxed" style={{ color: "var(--dim)" }}>{s.description}</p>
-                <p className="mt-1.5 text-xs font-semibold" style={{ color: "var(--sell)" }}>Excluded from the headline value, verified comps / averages, and every chart on this page.</p>
-              </div>
-            ))}
-
-            {verifiedSales.length > 0 && (
-              <div className="mt-5">
-                <p className="kicker" style={{ color: "var(--faint)" }}>Recent sales evidence — verified & sourced only</p>
-                <div className="mt-2 space-y-1.5">
-                  {verifiedSales.map(s => {
-                    const t = saleType(s);
-                    return (
-                      <div key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm rounded-lg px-3 py-2" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
-                        <span className="font-bold num">{fmt(s.price)}</span>
-                        <span style={{ color: "var(--dim)" }}>{s.saleDate}</span>
-                        <span style={{ color: "var(--dim)" }}>{s.source}</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: t.color, border: `1px solid ${t.color}` }}>{t.label}</span>
-                        <span className="w-full text-xs" style={{ color: "var(--faint)" }}>{s.description}</span>
-                      </div>
-                    );
-                  })}
+            {/* RECENT SALES (owner, Oct 13): THREE fields per row —
+                DATE · PRICE · WHERE IT WAS SOLD — a clean grouped list
+                of slim hairline rows. No description paragraphs, no
+                badge pills, no raw URLs: the full descriptions stay in
+                the underlying evidence data (audit trail intact), they
+                just don't render here. Unverified records carry it in
+                the where-string via saleVenue(), so no unverified
+                figure ever appears as a clean comp. This one list
+                supersedes both the old verified-only cards and the
+                unverified callout blocks. The manual value editor that
+                used to sit under this list is REMOVED — values come
+                from the refresh/comp system (no card is locked);
+                the server action stays dormant. */}
+            {selectedSales.length > 0 && (
+              <div className="quiet-panel mt-4 p-4 sm:p-5">
+                <p className="kicker" style={{ color: "var(--faint)" }}>Recent sales</p>
+                <div className="mt-1.5">
+                  {[...selectedSales].sort((a, b) => b.saleDate.localeCompare(a.saleDate) || b.id - a.id).map((s, idx) => (
+                    <p key={s.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 py-2 text-sm" style={{ borderTop: idx === 0 ? "none" : "1px solid var(--hairline)" }}>
+                      <span className="w-24 shrink-0" style={{ color: "var(--dim)" }}>{s.saleDate}</span>
+                      <strong className="num w-20 shrink-0">{fmt(s.price)}</strong>
+                      <span className="flex-1 min-w-[140px]" style={{ color: "var(--dim)" }}>{saleVenue(s)}</span>
+                    </p>
+                  ))}
                 </div>
               </div>
             )}
-            <div className="mt-4 flex flex-wrap gap-2 items-center">
-              <input aria-label="Update official value" value={editValue} onChange={e => setEditValue(e.target.value)} placeholder="New value, e.g. 1500" inputMode="decimal" className="rounded-full px-4 py-2 text-sm outline-none w-44" style={{ background: "var(--surface-alt)", color: "var(--text)", border: "1px solid var(--border)" }} />
-              <button onClick={() => { const v = parseFloat(editValue); if (!isNaN(v)) updateVal.mutate({ cert: selected.cert, checkedUsd: v }); }} className="rounded-full px-4 py-2 text-sm font-bold" style={{ background: "var(--accent)", color: "#1a0b36" }}>Save value</button>
-              {updateVal.isSuccess && <span className="text-xs">Saved ✓</span>}
-            </div>
-          </div>
-            {/* ——— LINEAGE — SCOPED TO THIS CARD ONLY (Oct 9): this
-                   section shows ONLY this card's own cert biography
-                   timeline and ITS sibling certs — never the full
-                   watch list (that is managed on the Cert watch page,
-                   Vault › Lineage). A card with no siblings and a thin
-                   timeline shows just its own events, honestly. It sits
-                   BELOW the main detail content, always. ——— */}
-            <div className="quiet-panel mt-5 p-5 sm:p-6" role="group" aria-label={`Lineage for ${selected.name} — scoped to this card only`}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="kicker" style={{ color: "var(--accent-ink)" }}>🧬 Lineage — this card only</p>
-                  <h3 className="font-display text-2xl font-bold mt-1">Cert {selected.cert} — biography &amp; siblings</h3>
-                  <p className="text-sm mt-1 max-w-2xl leading-relaxed" style={{ color: "var(--dim)" }}>Only what belongs to this card: its own cert's timeline and its sibling certs. The full cert watch list is managed on the Cert watch page.</p>
-                </div>
-                <button onClick={() => { setLineageCert(selected.cert); goNav("vault", "lineage"); }} aria-label="Open the full Cert watch management page in Vault, Lineage" className="touch-target shrink-0 rounded-full px-4 py-2 text-sm font-bold border" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)" }}>Full cert watch →</button>
-              </div>
-{/* ——— HISTORY — this cert's Slab Lineage events (the sales
-                   evidence list stays below, unchanged). The full
-                   biography used to render on the Lineage page; it now
-                   lives here on the detail page. ——— */}
-            {(() => {
-              const events = (data?.v2.lineageEvents ?? []).filter(e => e.cert === selected.cert);
-              return (
-                <div className="mt-4 rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }} role="group" aria-label={`History — lineage events for ${selected.name}, cert ${selected.cert}`}>
-                  <p className="kicker" style={{ color: "var(--faint)" }}>🧬 Biography timeline — this cert</p>
-                  {events.length === 0 ? (
-                    <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--dim)" }}>Only the events we know: none recorded yet for this cert beyond its enrollment. Nothing has been padded in — appearances land here when a sweep matches this cert number in a real listing, with its link.</p>
-                  ) : (
-                    <ol className="mt-3 grid gap-0">
-                      {events.map((e, i) => (
-                        <li key={e.id} className="flex gap-3 pb-4" style={{ borderLeft: i < events.length - 1 ? "2px solid var(--hairline)" : "2px solid transparent", marginLeft: 6, paddingLeft: 18, position: "relative" }}>
-                          <span aria-hidden style={{ position: "absolute", left: -7, top: 2, width: 12, height: 12, borderRadius: 999, background: e.verified ? "var(--accent)" : "var(--sell)", border: "2px solid var(--bg)" }} />
-                          <div className="flex-1">
-                            <p className="text-sm"><strong>{e.eventDate || "Date not recorded"}</strong> · {e.venue} {e.price != null && <span className="num font-bold">· {fmt(e.price)}</span>} {!e.verified && <span className="text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: "rgba(224,90,58,0.2)", color: "var(--sell)" }}>UNVERIFIED</span>}</p>
-                            <p className="text-xs" style={{ color: "var(--accent-ink)" }}>{e.sourceLabel} · {e.eventType.replace(/_/g, " ")}</p>
-                            <p className="text-sm mt-0.5 leading-relaxed" style={{ color: "var(--dim)" }}>{e.note}</p>
-                            {e.linkUrl && <a href={e.linkUrl} target="_blank" rel="noreferrer" aria-label={`Open source for lineage event — ${e.venue}`} className="touch-target inline-flex items-center text-xs font-bold underline" style={{ color: "var(--accent-ink)", minHeight: 32 }}>Source listing ↗</a>}
-                          </div>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
-              );
-            })()}
-            {/* ——— SIBLINGS — sibling certs (with their tracked state)
-                   and other tracked copies / grades of this card. ——— */}
-            {(() => {
-              const firstToken = (selected.name.split(" ")[0] ?? "").toLowerCase();
-              const siblingWatches = (data?.v2.lineageWatch ?? []).filter(w => w.relation === "sibling" && firstToken.length > 2 && w.label.toLowerCase().startsWith(firstToken) && (w.label.includes(`#${selected.number}`) || w.label.toLowerCase().includes(selected.name.toLowerCase())));
-              const copies = (data?.cards ?? []).filter(c => c.cert !== selected.cert && c.name === selected.name && c.setName === selected.setName && c.number === selected.number);
-              if (siblingWatches.length === 0 && copies.length === 0) return (
-                <div className="mt-4 rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
-                  <p className="kicker" style={{ color: "var(--faint)" }}>👀 Siblings</p>
-                  <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>No sibling certs or other tracked copies/grades on file for this card — when a sweep spots one, it lands here.</p>
-                </div>
-              );
-              return (
-                <div className="mt-4 rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }} role="group" aria-label={`Siblings — sibling certs and other tracked copies of ${selected.name}`}>
-                  <p className="kicker" style={{ color: "var(--faint)" }}>👀 Siblings — sibling certs &amp; other tracked copies</p>
-                  <div className="mt-3 grid gap-2">
-                    {siblingWatches.map(w => {
-                      const evs = (data?.v2.lineageEvents ?? []).filter(e => e.cert === w.cert);
-                      const latest = evs[0];
-                      return (
-                        <div key={w.cert} className="rounded-xl px-3.5 py-3" style={{ background: "var(--surface-alt)", border: "1.5px dashed #8b7fd4" }}>
-                          <p className="text-sm flex flex-wrap items-center gap-2"><strong>👀 SIBLING CERT {w.cert} — NOT OWNED</strong>
-                          </p>
-                          <p className="text-sm mt-1" style={{ color: "var(--dim)" }}>{w.label}</p>
-                          <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--dim)" }}>{w.note}</p>
-                          {latest && <p className="text-xs mt-1.5" style={{ color: "var(--dim)" }}>Latest tracked state: <strong style={{ color: "var(--text)" }}>{latest.venue}</strong>{latest.eventDate ? ` · ${latest.eventDate}` : ""}{latest.price != null ? ` · ${fmt(latest.price)}` : ""} — {latest.sourceLabel}{latest.linkUrl && <> · <a href={latest.linkUrl} target="_blank" rel="noreferrer" aria-label={`Open source for sibling cert ${w.cert} — ${latest.venue}`} className="font-bold underline" style={{ color: "var(--accent-ink)" }}>Source ↗</a></>}</p>}
-                        </div>
-                      );
-                    })}
-                    {copies.map(c => (
-                      <button key={c.cert} onClick={() => openCardDetail(c.cert)} aria-label={`Open tracked copy — ${c.name} ${c.grader} ${c.grade}, cert ${c.cert}`} className="rounded-xl px-3.5 py-3 text-left" style={{ background: "var(--surface-alt)", border: "1px solid var(--hairline)" }}>
-                        <span className="text-sm"><strong>{c.name}</strong> <span style={{ color: "var(--dim)" }}>· {c.setName} #{c.number} · {c.grader} {c.grade} · cert {c.cert} · {c.status}</span></span>
-                        <span className="num text-sm font-bold block mt-0.5">{fmt(c.effectiveUsd)} <span className="font-normal text-xs" style={{ color: "var(--accent-ink)" }}>— open this copy →</span></span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-                        </div>
-              </div>
-            </div>
-          </section>
-        )}
+
+          </section>        )}
         <div style={detailPageOpen ? { display: "none" } : undefined}>
 
         {/* ——— VALUE PROP — ONE merged card (Oct 9): the vault hero and
@@ -2527,9 +3152,9 @@ export function App() {
                official total, supporting line), RIGHT the Portfolio
                value over time chart (title + chart + verified baseline
                caption). On phones the card stacks: value first, chart
-               below. "Re-check prices" sits at the TOP RIGHT of the
-               card as a quiet TEXT LINK (same demotion as Mark as
-               seen — no filled button) and keeps its quiet behaviour:
+               below. "Re-check prices" sits in the links row beside
+               "How values work" under the summary as a quiet TEXT
+               LINK (no filled button) and keeps its quiet behaviour:
                values/timestamps update in place, no sweep details are
                surfaced on activation. The chart's old standalone unit
                and its Growth-section copy are gone — this is the
@@ -2538,11 +3163,8 @@ export function App() {
                establishes the number + date); the verified baseline
                caption under the chart stays. Stat tiles sit below the
                merged card. Official values only. ——— */}
-        <div className="quiet-panel px-5 py-5 sm:px-6" style={vis(inGroup("home"))}>
-          <div className="flex justify-end">
-            <button onClick={() => refresh.mutate()} disabled={refresh.isPending} aria-label="Re-check prices — values and timestamps update in place" className="shrink-0 px-1 py-1 text-sm font-bold underline underline-offset-2 disabled:opacity-50" style={{ color: "var(--accent-ink)" }}>{refresh.isPending ? "Checking…" : "↻ Re-check prices"}</button>
-          </div>
-          <div className="mt-2 grid gap-6 lg:grid-cols-2 lg:gap-0 lg:items-start">
+        <div className="slab px-5 py-5 sm:px-6" style={vis(inGroup("home"))}>
+          <div className="grid gap-6 lg:grid-cols-2 lg:gap-0 lg:items-start">
             <div className="min-w-0 lg:pr-8">
               <p className="kicker" style={{ color: "var(--accent-ink)" }}>Comp-based official values{latestChecked ? ` · Latest check ${latestChecked}` : ""}</p>
               <h1 className="num font-display text-[52px] leading-none font-bold mt-3 sm:text-7xl" style={{ letterSpacing: "-0.02em" }}>{fmt(base)}</h1>
@@ -2565,11 +3187,21 @@ export function App() {
                   is now a ONE-LINE summary; the full explanation lives
                   behind the "How values work" disclosure (the codebase's
                   <details> pattern, collapsed by default). */}
-              <p className="mt-3 text-sm max-w-xl leading-relaxed" style={{ color: "var(--dim)" }}>Official value across <strong style={{ color: "var(--text)" }}>{data.totals.pricedCount} priced cards</strong> — comp-based, revalued on every refresh; cards with an owner-kept price stay locked at it.</p>
-              <details className="mt-1.5 max-w-xl">
-                <summary aria-label="How values work — expand for the full explanation of official values" className="touch-target cursor-pointer inline-flex items-center text-sm font-bold underline underline-offset-2" style={{ color: "var(--accent-ink)", minHeight: 36 }}>How values work</summary>
-                <p className="mt-1.5 text-sm leading-relaxed" style={{ color: "var(--dim)" }}>Official portfolio value across <strong style={{ color: "var(--text)" }}>{data.totals.pricedCount} priced cards</strong> ({data.totals.totalCount} total). The official number is <strong style={{ color: "var(--text)" }}>comp-based and live</strong>: each card’s official value is its latest checked price from verified comps, revalued on every refresh — cards with no comp check yet sit at their vault estimate, labelled unverified. Cards with an owner-kept price stay locked at it by the owner’s instruction; every other card floats to verified comps.</p>
-              </details>
+              <p className="mt-3 text-sm max-w-xl leading-relaxed" style={{ color: "var(--dim)" }}>Official value across <strong style={{ color: "var(--text)" }}>{data.totals.pricedCount} priced cards</strong> — comp-based, revalued on every refresh; every card floats to verified comps.</p>
+              {/* Links row (owner, Oct 13): "How values work" and
+                  "↻ Re-check prices" sit side by side as quiet text
+                  links under the summary — Re-check moved down from
+                  the hero's top-right corner to live beside the
+                  disclosure. Same row on desktop and mobile; in the
+                  two-column hero it stays with the text column and
+                  never collides with the chart. */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-6 gap-y-1 max-w-xl">
+                <details className="max-w-xl">
+                  <summary aria-label="How values work — expand for the full explanation of official values" className="touch-target cursor-pointer inline-flex items-center text-sm font-bold underline underline-offset-2" style={{ color: "var(--accent-ink)", minHeight: 36 }}>How values work</summary>
+                  <p className="mt-1.5 text-sm leading-relaxed" style={{ color: "var(--dim)" }}>Official portfolio value across <strong style={{ color: "var(--text)" }}>{data.totals.pricedCount} priced cards</strong> (45 total). The official number is <strong style={{ color: "var(--text)" }}>comp-based and live</strong>: each card’s official value is its latest checked price from verified comps, revalued on every refresh — cards with no comp check yet sit at their vault estimate, labelled unverified. No card is locked: the owner-kept locks were removed Oct 14, 2026 at your instruction, so every card — Giratina and Mewtwo Expedition included — floats to verified comps, regardless of where the automated value lands.</p>
+                </details>
+                <button onClick={() => refresh.mutate()} disabled={refresh.isPending} aria-label="Re-check prices — values and timestamps update in place" className="touch-target shrink-0 inline-flex items-center px-1 py-1 text-sm font-bold underline underline-offset-2 disabled:opacity-50" style={{ color: "var(--accent-ink)", minHeight: 36 }}>{refresh.isPending ? "Checking…" : "↻ Re-check prices"}</button>
+              </div>
               {/* Cost summary line (Remedies pass 1 — audit remedy
                   P0-3): renders ONLY when at least one card carries a
                   recorded cost, and says plainly that the P&L covers
@@ -2592,7 +3224,7 @@ export function App() {
                   could show a stale snapshot value. The big total and
                   the chart tooltips carry the number. */}
               <p className="font-display font-bold text-lg">Portfolio value over time</p>
-              <div className="mt-3 h-[190px] sm:h-[230px] lg:h-[210px]" role="img" aria-label={`Area chart of portfolio value over time, forward-tracked from the first recorded snapshot. Latest snapshot total: ${fmt(data.totals.officialTotal)} across ${data.totals.pricedCount} priced cards. The caption beneath the chart states the verified baseline this series starts from.`}>
+              <div className="mt-3 h-[190px] sm:h-[230px] lg:h-[210px]" role="img" aria-label={`Area chart of portfolio value over time, forward-tracked from the verified baseline. Latest snapshot total: ${fmt(data.totals.officialTotal)} across ${data.totals.pricedCount} priced cards. The caption beneath the chart states the verified baseline this series starts from.`}>
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={snapshotData} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
                     <CartesianGrid stroke="var(--border)" strokeDasharray="3 6" vertical={false} />
@@ -2608,15 +3240,6 @@ export function App() {
           </div>
         </div>
 
-        {/* ——— FRESHNESS LINE (phase 2) — the update-status line that
-               used to live INSIDE the removed digest block, lifted out
-               verbatim (same stored-log facts: last daily refresh,
-               latest logged update, last/next scout sweep) and rendered
-               standalone directly under the hero whenever the portfolio
-               is loaded — no longer gated on any digest state. ——— */}
-        <p className="mt-3 px-1 text-[11px] leading-relaxed" style={{ color: "var(--faint)", ...vis(inGroup("home")) }} role="note" aria-label="Update status — last daily price refresh and last scout sweep">
-          ↻ Last daily refresh {updateHealth.dailyLog ? <strong style={{ color: "var(--dim)" }}>{new Date(updateHealth.dailyLog.ranAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</strong> : "not logged yet"}{updateHealth.dailyFailed ? <strong style={{ color: "var(--sell)" }}> — research dispatch FAILED, values unchanged (see Change log)</strong> : ""} · latest logged update {updateHealth.lastLog ? <strong style={{ color: "var(--dim)" }}>{new Date(updateHealth.lastLog.ranAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</strong> : "—"} · last sweep {updateHealth.lastSweepAt ? <strong style={{ color: "var(--dim)" }}>{new Date(updateHealth.lastSweepAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</strong> : "—"}, next ~{nextSweepLabel}
-        </p>
 
         {/* Stat tiles NAVIGATE (design pass, Oct 13): each tile is a
             real button with the same face — Cards → Vault › Collection;
@@ -2625,19 +3248,27 @@ export function App() {
             exactly); Concentration → Insights › Risk; Top 5 share →
             Vault › Collection with the sort set to value descending
             (the collection's existing sortKey state). */}
-        <div className="mt-4 mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4" style={vis(inGroup("home"))}>
+        {/* GROUPED STAT CARD (§P, Apple pattern): the four tiles are
+            ONE container — a 2×2 grid with hairline dividers (the
+            app's single separator treatment) and consistent internal
+            padding. Each quadrant remains its own navigation button
+            with a ≥44px target; dividers are borders on the buttons
+            themselves, so they never eat the targets. */}
+        <div className="quiet-panel mt-4 mb-5 overflow-hidden" style={vis(inGroup("home"))}>
+          <div className="stat-group">
           {[
             { k: "Cards", v: `${data.totals.activeCount} active`, s: `${data.totals.psaCount} PSA · ${data.totals.cgcCount} CGC`, aria: `Cards: ${data.totals.activeCount} active — go to Vault, Collection`, go: () => goNav("vault", "collection") },
             { k: "Top holding", v: fmt(data.totals.topHoldingValue), s: data.totals.topHoldingName, aria: `Top holding: ${data.totals.topHoldingName} — view card`, go: () => { const th = top5[0]; if (th) openCardDetail(th.cert); else goNav("vault", "collection"); } },
-            { k: "Concentration", v: pct(data.totals.topHoldingPct), s: "in the top holding alone — see advisor note", aria: `Concentration: ${pct(data.totals.topHoldingPct)} in the top holding alone — go to Insights, Risk`, go: () => goNav("insights", "risk") },
+            { k: "Concentration", v: pct(data.totals.topHoldingPct), s: "in Giratina alone — see advisor note", aria: `Concentration: ${pct(data.totals.topHoldingPct)} in Giratina alone — go to Insights, Risk`, go: () => goNav("insights", "risk") },
             { k: "Top 5 share", v: pct(top5Pct), s: "of priced value", aria: `Top 5 share: ${pct(top5Pct)} of priced value — go to Vault, Collection sorted by value`, go: () => { setSortKey("value"); goNav("vault", "collection"); } },
           ].map(x => (
-            <button key={x.k} onClick={x.go} aria-label={x.aria} className="quiet-panel slab-hover touch-target p-4 text-left w-full" style={{ minHeight: 44 }}>
+            <button key={x.k} onClick={x.go} aria-label={x.aria} className="touch-target">
               <p className="kicker" style={{ color: "var(--faint)" }}>{x.k}</p>
               <p className="num text-xl font-bold mt-1.5">{x.v}</p>
               <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--dim)" }}>{x.s}</p>
             </button>
           ))}
+          </div>
         </div>
 
         {/* ——— TOP HOLDINGS SLAB FAN (Glass Vault phase 1) ———
@@ -2649,13 +3280,22 @@ export function App() {
                offset by a full label height — no label ever covered.
                Clicking a slab opens that card's detail page through
                the same openCardDetail path collection rows use, so
-               ← Back restores Home exactly. */}
+               ← Back restores Home exactly.
+               UNBOXED (owner, Oct 13): the section is OUT of the
+               glass container — the header row stands free on the
+               backdrop as plain text and the fan sits directly on
+               the backdrop with only the cases' own shadows; ~20px
+               of air between the header row and the fan. Hovering a
+               fan slab runs the holo-tilt micro-interaction (grow +
+               pointer-tracked rotation + sheen). */}
         {top5.length > 0 && (
           <section aria-label="Top holdings — graded slab fan" className="mb-5" style={vis(inGroup("home"))}>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-1">
-              <h2 className="font-display text-xl font-bold">Top holdings</h2>
-              <span className="text-sm" style={{ color: "var(--dim)" }}>Your top {Math.min(4, top5.length)} slabs by official value</span>
-              <button onClick={() => goNav("vault", "collection")} aria-label="View the full collection in Vault, Collection" className="ml-auto px-1 py-1 text-sm font-bold underline underline-offset-2" style={{ color: "var(--accent-ink)" }}>Collection →</button>
+            <div className="px-1 py-1">
+              <div className="flex items-baseline gap-x-4">
+                <h2 className="font-display text-xl font-bold whitespace-nowrap">Top holdings</h2>
+                <button onClick={() => goNav("vault", "collection")} aria-label="View the full collection in Vault, Collection" className="ml-auto px-1 py-1 text-sm font-bold underline underline-offset-2" style={{ color: "var(--accent-ink)" }}>View collection →</button>
+              </div>
+              <p className="text-sm mt-1" style={{ color: "var(--dim)" }}>Your top {Math.min(4, top5.length)} slabs by official value</p>
             </div>
             <div className="slab-fan">
               {top5.slice(0, 4).map((c, i) => (
@@ -2674,14 +3314,14 @@ export function App() {
 
         {/* ——— SCOUTS & SWEEPS — the standalone scout deal feed was
                RETIRED (Oct 9): pinned deals live only in the Findings
-               Ledger (Pinned tab). What remains here is the sweep
+               Ledger (Live segment). What remains here is the sweep
                machinery: the manual sweep trigger, its log, and the
                scout roster. No finding renders here. ——— */}
         <section aria-label="Scout sweeps and team" className="quiet-panel mt-5 p-5 sm:p-6" style={vis(inGroup("scouts", "league"))}>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex-1 min-w-[220px]">
               <p className="kicker" style={{ color: "var(--accent-ink)" }}>🐾 Scouts &amp; sweeps</p>
-              <p className="text-sm mt-1 max-w-2xl" style={{ color: "var(--dim)" }}>The scouts roam the town around the data — margins, paths, gaps — never over it. Every kept finding lives in the <strong style={{ color: "var(--text)" }}>Findings Ledger</strong> (Deals › Ledger); pinned deals are its Pinned tab.</p>
+              <p className="text-sm mt-1 max-w-2xl" style={{ color: "var(--dim)" }}>The scouts roam the town ground at the foot of the page — on the grass, never over the data. Every kept finding lives in the <strong style={{ color: "var(--text)" }}>Findings Ledger</strong> (Deals › Ledger); pinned deals sit in its Live segment.</p>
             </div>
             <button onClick={() => sweepMut.mutate()} disabled={sweepMut.isPending} aria-label="Run a scout sweep now" className="rounded-full px-4 py-2 text-sm font-bold disabled:opacity-50" style={{ background: "var(--accent)", color: "#1a0b36" }}>{sweepMut.isPending ? "Sweeping…" : "🐾 Sweep now — hunt newly listed"}</button>
           </div>
@@ -2690,7 +3330,7 @@ export function App() {
           {/* Sweep log — collapsible (same pattern as Change log): collapsed
               by default, header shows the latest sweep's headline, state
               remembered in localStorage (log-open-sweep). */}
-          <div className="mt-6 rounded-2xl px-4 py-2" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
+          <div className="mt-6 rounded-2xl px-4 py-2" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
             <button onClick={() => setSweepLogOpen(v => !v)} aria-expanded={sweepLogOpen} aria-label={sweepLogOpen ? "Collapse sweep log" : "Expand sweep log"} className="w-full flex items-center gap-3 text-left py-2.5 min-h-[48px]">
               <span className="font-display font-bold shrink-0">🧹 Sweep log</span>
               <span className="flex-1 min-w-0 truncate text-xs" style={{ color: "var(--dim)" }}>
@@ -2722,40 +3362,43 @@ export function App() {
             ))}
           </div>
 
-          {/* Scout team — compact row (Oct 9 redesign): all five scouts
-              across on desktop, centred cards (avatar on top, name, beat,
-              ONE short status line, compact stats). The full status
-              paragraph lives in the card's tooltip (title) and in the
-              League / journal — not on the card face. Evolution state
-              from the Paper League shows as a badge by the avatar. */}
-          <div className="mt-5 pt-5 flex flex-wrap justify-center gap-3" style={{ borderTop: "1px solid var(--hairline)" }}>
+          {/* Merged scout list (owner, Oct 14): ONE card per scout —
+              sprite, name, what it tracks (one line), and its actions.
+              The separate setup section below is gone; the form
+              lives behind each card's Set up / Edit button. Status prose
+              and stat lines no longer render on the cards. */}
+          <div className="mt-5 pt-5 grid gap-3" style={{ borderTop: "1px solid var(--hairline)" }} aria-label="Scout list">
             {data.scouts.map(s => {
-              const pinned = pinnedByScout.get(s.scoutId);
-              const sighting = sightingByScout.get(s.scoutId);
-              const pinnedCount = ledgerPinned.filter(d => d.scoutId === s.scoutId).length;
-              const paper = (v2?.paper ?? []).find(pp => pp.scoutId === s.scoutId);
               const isRocket = s.scoutId === "rocket";
-              const rocketIntelCount = (data?.v2.rocket.findIntel ?? []).length;
-              const rocketFlagCount = (data?.v2.rocket.holdingFlags ?? []).length;
-              const sweepTime = s.lastSweepAt ? new Date(s.lastSweepAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : null;
+              const cfg = (data.scoutConfigs ?? []).find(c => c.scoutId === s.scoutId) ?? { scoutId: s.scoutId, isActive: true, focusGroups: [] as string[], ceilingUsd: null, tier1DiscountPct: null, marketplaces: "", hasSavedConfig: false };
+              const hasSaved = cfg.hasSavedConfig;
+              const focusLabel = cfg.focusGroups.length ? cfg.focusGroups.join(", ") : "All groups";
+              const marketsLabel = cfg.marketplaces.trim() ? cfg.marketplaces.trim() : s.territory;
+              const tracksLine = isRocket ? s.territory : hasSaved ? `${focusLabel} · ${marketsLabel}` : s.territory;
+              const open = setupScoutId === s.scoutId;
               return (
-              <div key={s.scoutId} title={s.statusLine} className="flex flex-col items-center text-center rounded-2xl p-3.5 basis-[calc(50%-6px)] md:basis-[calc(33.333%-8px)] xl:basis-0 xl:flex-1" style={{ background: "var(--glass)", border: pinned ? "1px solid rgba(217,164,65,0.55)" : "1px solid var(--hairline)" }}>
-                <div className="relative">
-                  <ScoutAvatar scout={s} size={46} />
-                  {paper && paper.stage >= 2 && <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "var(--accent)", color: "#1a0b36" }} title={`Evolved in the Paper League: ${paper.evolution} (stage ${paper.stage})`}>✨ {paper.evolution}</span>}
+              <article key={s.scoutId} aria-label={`${s.name} scout`} className="rounded-2xl p-4" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
+                <div className="flex items-center gap-3">
+                  <ScoutAvatar scout={s} size={52} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-display font-bold text-base leading-tight">{s.name}</p>
+                    <p className="text-sm leading-snug mt-0.5" style={{ color: "var(--dim)" }}>{tracksLine}</p>
+                    {!isRocket && !hasSaved && <p className="text-xs mt-0.5" style={{ color: "var(--faint)" }}>Default setup</p>}
+                    {!isRocket && hasSaved && !cfg.isActive && <p className="text-xs mt-0.5" style={{ color: "var(--faint)" }}>Off — not hunting</p>}
+                  </div>
                 </div>
-                <p className="font-display font-bold text-[15px] leading-tight mt-2.5">{s.name}</p>
-                <p className="text-[11px] leading-snug" style={{ color: "var(--accent-ink)" }}>{s.territory}</p>
-                <p className="mt-1.5 text-xs leading-snug line-clamp-2" style={{ color: "var(--dim)" }}>{firstSentence(s.statusLine)}</p>
-                {pinned && <button onClick={() => { goNav("deals", "ledger"); window.setTimeout(() => document.getElementById(`ledger-deal-${pinned.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 90); }} aria-label={`Open ${pinned.cardName} in the Findings Ledger`} className="mt-1.5 text-xs font-bold underline line-clamp-2" style={{ color: "var(--accent-ink)" }}>🎉 {pinned.cardName} — pinned in the Ledger ↓</button>}
-                {!pinned && sighting && <button onClick={() => { goNav("deals", "ledger"); window.setTimeout(() => document.getElementById(`ledger-deal-${sighting.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 90); }} aria-label={`Open sighting ${sighting.cardName} in the Findings Ledger`} className="mt-1.5 text-xs font-semibold underline line-clamp-2" style={{ color: "var(--dim)" }}>👀 Sighting: {sighting.cardName} ↓</button>}
-                <div className="mt-auto pt-2.5 text-[11px] leading-relaxed" style={{ color: "var(--faint)" }}>
-                  {isRocket
-                    ? <p className="num">{rocketIntelCount} bear case{rocketIntelCount === 1 ? "" : "s"} · {rocketFlagCount} stress test{rocketFlagCount === 1 ? "" : "s"}</p>
-                    : <p className="num">{s.findsCount} finds{pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ""} · {s.lastSweepCandidates ?? 0} checked · {s.lastSweepFinds ?? 0} under</p>}
-                  <p>⏱ Last sweep {sweepTime ?? "—"}</p>
-                </div>
-              </div>
+                {!isRocket && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button onClick={() => viewScoutFinds(s.scoutId)} aria-label={`View finds for ${s.name}`} className="touch-target rounded-full px-4 py-2 text-sm font-bold border" style={{ borderColor: "var(--border)", color: "var(--text)" }}>View finds</button>
+                    {hasSaved ? (
+                      <button onClick={() => setSetupScoutId(open ? null : s.scoutId)} aria-expanded={open} aria-label={open ? `Close edit for ${s.name}` : `Edit scout ${s.name}`} className="touch-target rounded-full px-4 py-2 text-sm font-bold border" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)" }}>{open ? "Close" : "Edit scout"}</button>
+                    ) : (
+                      <button onClick={() => setSetupScoutId(open ? null : s.scoutId)} aria-expanded={open} aria-label={open ? `Close setup for ${s.name}` : `Set up scout ${s.name}`} className="touch-target rounded-full px-4 py-2 text-sm font-bold" style={{ background: "var(--accent)", color: "#1a0b36" }}>{open ? "Close" : "Set up scout"}</button>
+                    )}
+                  </div>
+                )}
+                {!isRocket && open && <ScoutSetupForm key={s.scoutId + String(cfg.isActive) + cfg.focusGroups.join(",") + String(cfg.ceilingUsd) + String(cfg.tier1DiscountPct) + cfg.marketplaces + String(cfg.hasSavedConfig)} scoutName={s.name} config={cfg} busy={scoutConfigMut.isPending} onSave={(vals) => scoutConfigMut.mutate({ scoutId: s.scoutId, ...vals })} />}
+              </article>
               );
             })}
           </div>
@@ -2778,7 +3421,7 @@ export function App() {
             <button onClick={() => { setShowQ(""); setShowCert(null); setScanResult(null); setScanError(null); }} aria-label="Clear Show Mode search" className="touch-target rounded-full px-5 py-3 text-sm font-bold border" style={{ borderColor: "var(--border)", color: "var(--dim)" }}>Clear</button>
           </div>
           {(scanBusy || scanError || scanResult) && (
-            <div className="mt-3 rounded-2xl p-4" style={{ background: "var(--glass)", border: scanError ? "1.5px solid var(--sell)" : "1px solid var(--hairline)" }} role="status" aria-live="polite" aria-label="Slab scan result">
+            <div className="mt-3 rounded-2xl p-4" style={{ background: "var(--surface-2)", border: scanError ? "1.5px solid var(--sell)" : "1px solid var(--hairline)" }} role="status" aria-live="polite" aria-label="Slab scan result">
               <div className="flex gap-3">
                 {scanPreview && <img src={scanPreview} alt="Your slab label photo being scanned" className="rounded-xl object-cover shrink-0" style={{ width: 84, height: 84, border: "1px solid var(--border)" }} />}
                 <div className="min-w-0 flex-1">
@@ -2791,13 +3434,13 @@ export function App() {
                         {scanResult.extracted.grade && <span className="px-2 py-1 rounded-full font-bold" style={{ background: "var(--surface-alt)" }}>Grade: {scanResult.extracted.grade}</span>}
                         {scanResult.extracted.cardName && <span className="px-2 py-1 rounded-full font-bold" style={{ background: "var(--surface-alt)" }}>{scanResult.extracted.cardName}{scanResult.extracted.setName ? ` · ${scanResult.extracted.setName}` : ""}{scanResult.extracted.number ? ` #${scanResult.extracted.number}` : ""}</span>}
                         {scanResult.certCandidates.map(c => <span key={c} className="num px-2 py-1 rounded-full font-bold" style={{ background: "var(--surface-alt)" }}>Cert read: {c}</span>)}
-                        {scanResult.qrPayload && <span className="px-2 py-1 rounded-full font-bold" style={{ background: "var(--surface-alt)" }}>QR: {scanResult.qrPayload.slice(0, 60)}{scanResult.qrPayload.length > 60 ? "…" : ""}</span>}
+                        {scanResult.qrPayload && <span className="px-2 py-1 rounded-full font-bold" style={{ background: "var(--surface-alt)" }}>QR code read ✓</span>}
                         <span className="px-2 py-1 rounded-full" style={{ background: "var(--surface-alt)", color: "var(--dim)" }}>OCR confidence: {scanResult.extracted.confidence}</span>
                       </div>
                       {scanResult.extracted.visibleText && <p className="text-xs mt-1.5" style={{ color: "var(--faint)" }}>Label text read: “{scanResult.extracted.visibleText.slice(0, 180)}”</p>}
                       <div className="mt-2.5 flex flex-wrap gap-2">
                         {scanResult.matches.length > 1 || scanResult.status === "matched_name" ? scanResult.matches.map(m => (
-                          <button key={m.cert} onClick={() => applyScanCert(m.cert)} aria-label={`Load verdict for scanned match ${m.name} cert ${m.cert}`} className="touch-target rounded-full px-3.5 py-2 text-xs font-bold" style={{ background: "var(--accent)", color: "#1a0b36" }}>{m.relation === "owned" ? "✓ Owned" : "👀 Lineage"} · {m.name} · cert {m.cert}</button>
+                          <button key={m.cert} onClick={() => applyScanCert(m.cert)} aria-label={`Load verdict for scanned match ${m.name} cert ${m.cert}`} className="touch-target rounded-full px-3.5 py-2 text-xs font-bold" style={{ background: "var(--accent)", color: "#1a0b36" }}>{m.relation === "owned" ? "✓ Owned" : "👀 Watchlist"} · {m.name} · cert {m.cert}</button>
                         )) : null}
                         {scanResult.status === "not_tracked" && scanResult.certCandidates.map(c => (
                           <button key={c} onClick={() => { setShowCert(null); setShowQ(c); }} aria-label={`Put scanned cert ${c} in the search to verify it`} className="touch-target rounded-full px-3.5 py-2 text-xs font-bold border" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)" }}>Verify cert {c} in search</button>
@@ -2813,7 +3456,7 @@ export function App() {
           )}
           {(() => {
             const q = showQ.trim().toLowerCase();
-            if (!q) return <p className="mt-3 text-sm" style={{ color: "var(--dim)" }}>Try a cert you own (DEMO-1002), a sibling watched in Lineage, or a name like “Lugia”, “Charizard”, “Mew”.</p>;
+            if (!q) return <p className="mt-3 text-sm" style={{ color: "var(--dim)" }}>Try a cert you own (DEMO-1002), or a name like “Lugia”, “Charizard”, “Mew”.</p>;
             const certHit = (data.cards ?? []).find(c => c.cert.toLowerCase() === q);
             const nameHits = (data.cards ?? []).filter(c => (c.name + " " + c.setName + " " + c.grader + " " + c.grade).toLowerCase().includes(q));
             const watchHits = (data.watchlist ?? []).filter(w => w.name.toLowerCase().includes(q));
@@ -2840,7 +3483,7 @@ export function App() {
                   const pop = (v2?.pops ?? []).find(p => p.cert === chosen.cert);
                   const pump = (v2?.pump ?? []).find(p => p.cert === chosen.cert);
                   const maxBuyM = chosen.notes.match(/MAX BUY/i);
-                  const sourceLabel = OWNER_KEPT_CERTS_CLIENT.includes(chosen.cert) ? "Owner-kept value (owner’s instruction) — locked" : chosen.checkedUsd != null ? "Comp-based official — latest live checked price (verified sold comps / aggregator cross-check)" : "Vault estimate — unverified";
+                  const sourceLabel = chosen.checkedUsd != null ? "Comp-based official — latest live checked price (verified sold comps / aggregator cross-check)" : "Vault estimate — unverified";
                   return (
                     <article className="rounded-2xl p-4 sm:p-5" style={{ background: "var(--surface-alt)", border: "1.5px solid var(--accent)" }}>
                       <p className="kicker" style={{ color: "var(--accent-ink)" }}>{chosen.status === "active" ? "✓ OWNED" : chosen.status.toUpperCase()} · Cert {chosen.cert}</p>
@@ -2849,26 +3492,26 @@ export function App() {
                       <p className="num font-display text-4xl font-black mt-3">{fmt(chosen.effectiveUsd)}</p>
                       <p className="text-xs" style={{ color: "var(--dim)" }}>Current value — {sourceLabel}</p>
                       <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                        <p className="rounded-xl px-3 py-2" style={{ background: "var(--glass)" }}><strong>Last verified sales:</strong><br />{vsales.length ? vsales.slice(0, 3).map(s => `${fmt(s.price)} · ${s.saleDate} · ${s.source}`).join("  |  ") : "None on file — no sale invented."}</p>
-                        <p className="rounded-xl px-3 py-2" style={{ background: "var(--glass)" }}><strong>Pop:</strong> {pop ? `${pop.popTotal.toLocaleString()} total${pop.popGrade != null ? ` · ${pop.popGrade.toLocaleString()} at grade` : ""} · trend: baseline Oct 8, 2026${pop.alert ? " · ⚠ +>10% in 30d" : " · velocity accrues per refresh"}` : (chosen.popInfo ?? "No pop on file")}</p>
-                        <p className="rounded-xl px-3 py-2" style={{ background: "var(--glass)" }}><strong>Pump Detector:</strong> {pump ? `${pump.level} (score ${pump.score}) — ${pump.factors[0] ?? ""}` : "Not scored"}</p>
-                        <p className="rounded-xl px-3 py-2" style={{ background: "var(--glass)" }}><strong>Max-pay line:</strong><br />{maxBuyM ? "See watchlist max-buy for this card (TCGplayer-tracked, Oct 8, 2026)." : vsales.length ? `Anchor to last verified sale ${fmt(vsales[0]?.price)} (verified sold comp) — guidance, not a watchlist max-buy.` : `Anchor to current value ${fmt(chosen.effectiveUsd)} (${sourceLabel}) — guidance only; no verified sale on file.`}</p>
+                        <p className="rounded-xl px-3 py-2" style={{ background: "var(--surface-2)" }}><strong>Last verified sales:</strong><br />{vsales.length ? vsales.slice(0, 3).map(s => `${fmt(s.price)} · ${s.saleDate} · ${s.source}`).join("  |  ") : "None on file — no sale invented."}</p>
+                        <p className="rounded-xl px-3 py-2" style={{ background: "var(--surface-2)" }}><strong>Pop:</strong><br />{pop ? `${pop.popTotal.toLocaleString()} total${pop.popGrade != null ? ` · ${pop.popGrade.toLocaleString()} at grade` : ""} · trend: baseline Oct 8, 2026${pop.alert ? " · ⚠ +>10% in 30d" : " · velocity accrues per refresh"}` : (chosen.popInfo ?? "No pop on file")}</p>
+                        <p className="rounded-xl px-3 py-2" style={{ background: "var(--surface-2)" }}><strong>Pump Detector:</strong><br />{pump ? `${pump.level} (score ${pump.score}) — ${pump.factors[0] ?? ""}` : "Not scored"}</p>
+                        <p className="rounded-xl px-3 py-2" style={{ background: "var(--surface-2)" }}><strong>Max-pay line:</strong><br />{maxBuyM ? "See watchlist max-buy for this card (TCGplayer-tracked, Oct 8, 2026)." : vsales.length ? `Anchor to last verified sale ${fmt(vsales[0]?.price)} (verified sold comp) — guidance, not a watchlist max-buy.` : `Anchor to current value ${fmt(chosen.effectiveUsd)} (${sourceLabel}) — guidance only; no verified sale on file.`}</p>
                       </div>
-                      <p className="mt-3 text-sm"><strong>Advisor:</strong> <span style={{ color: callColor(chosen.advisorCall) }}>{chosen.advisorCall}</span> — {chosen.advisorReason}</p>
+                      <p className="mt-3 text-sm"><strong>Advisor:</strong><br /><span style={{ color: callColor(chosen.advisorCall) }}>{chosen.advisorCall}</span> — {chosen.advisorReason}</p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button onClick={() => openCardDetail(chosen.cert)} aria-label={`Open full detail page for ${chosen.name}`} className="touch-target rounded-full px-4 py-2 text-sm font-bold" style={{ background: "var(--accent)", color: "#1a0b36" }}>Full detail →</button>
-                        <button onClick={() => { setLineageCert(chosen.cert); goNav("vault", "lineage"); }} aria-label={`Open lineage watch for cert ${chosen.cert} in Vault, Lineage`} className="touch-target rounded-full px-4 py-2 text-sm font-bold border" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)" }}>Lineage →</button>
+
                       </div>
                     </article>
                   );
                 })()}
                 {watchHits.map(w => (
-                  <article key={w.id} className="rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
+                  <article key={w.id} className="rounded-2xl p-4" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
                     <p className="kicker" style={{ color: "var(--hold)" }}>👀 WATCHLISTED — not owned</p>
                     <p className="font-semibold mt-1">{w.name}</p>
-                    <p className="text-sm mt-1" style={{ color: "var(--accent-ink)" }}>{w.priceContext}</p>
-                    <p className="text-sm mt-1" style={{ color: "var(--dim)" }}>{w.thesis}</p>
-                    <p className="text-sm mt-1"><strong>Max-pay / rule:</strong> {w.actionRule}</p>
+                    {renderWatchFields(w)}
+                    <WatchAccrualLine points={watchPointsById.get(w.id) ?? []} maxBuyUsd={maxBuyOf(w)} />
+                    <WatchManageControls w={w} busy={updateWatch.isPending || removeWatchMut.isPending} onSaveMaxBuy={(id, mb) => updateWatch.mutate({ id, maxBuyUsd: mb })} onRemove={(id) => removeWatchMut.mutate({ id })} />
                   </article>
                 ))}
               </div>
@@ -2882,11 +3525,11 @@ export function App() {
           <h2 className="font-display text-2xl sm:text-3xl font-bold mt-1.5">Just-listed firehose</h2>
           <p className="text-sm mt-1 max-w-3xl" style={{ color: "var(--dim)" }}>Newest first from the 2-hour sweeps, matching your watchlist theses. One-tap <strong style={{ color: "var(--text)" }}>Keep / Pass / Closed · Ended / Open</strong> — Pass hides the card for good, and Closed / Ended files the listing as ended so it never comes back. Desktop keyboard: <strong style={{ color: "var(--text)" }}>K</strong> keep · <strong style={{ color: "var(--text)" }}>P</strong> pass · <strong style={{ color: "var(--text)" }}>E</strong> closed / ended · <strong style={{ color: "var(--text)" }}>O</strong> open (acts on the highlighted card while Trenches is on screen).</p>
           {trenchItems.length === 0 ? (
-            <p className="mt-3 text-sm rounded-xl px-4 py-3" style={{ background: "var(--glass)", color: "var(--dim)" }}>No just-listed items in the firehose right now — the sweeps report what they actually checked; the next sweep lands within ~2 hours.</p>
+            <p className="mt-3 text-sm rounded-xl px-4 py-3" style={{ background: "var(--surface-2)", color: "var(--dim)" }}>No just-listed items in the firehose right now — the sweeps report what they actually checked; the next sweep lands within ~2 hours.</p>
           ) : (
             <div className="mt-4 grid gap-2.5">
               {trenchItems.slice(0, 15).map((t, i) => (
-                <article key={t.key} className="rounded-2xl px-3.5 py-3" style={{ background: "var(--glass)", border: i === trenchIdx ? "1.5px solid var(--accent)" : "1px solid var(--hairline)" }}>
+                <article key={t.key} className="rounded-2xl px-3.5 py-3" style={{ background: "var(--surface-2)", border: i === trenchIdx ? "1.5px solid var(--accent)" : "1px solid var(--hairline)" }}>
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
                     <p className="font-semibold leading-snug flex-1 min-w-[180px]">{t.name} {t.grade && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "var(--surface-alt)", color: "var(--accent-ink)" }}>{t.grade}</span>}</p>
                     <span className="num font-bold">{fmt(t.ask)}</span>
@@ -2910,7 +3553,7 @@ export function App() {
           <p className="kicker" style={{ color: "var(--accent-ink)" }}>📈 Indices + Heatmap</p>
           <h2 className="font-display text-2xl sm:text-3xl font-bold mt-1.5">Your market, benchmarked</h2>
           <div className="mt-4 grid gap-4 xl:grid-cols-2">
-            <div className="rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
+            <div className="rounded-2xl p-4" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
               <p className="font-display font-bold">Custom indices — base 100</p>
               <p className="text-xs mt-0.5" style={{ color: "var(--dim)" }}>Normalized at the first honest data point (Oct 8, 2026). Where back-data is thin the line starts today and accrues — no history fabricated.</p>
               <div className="mt-3" style={{ height: 190 }} role="img" aria-label={`Line chart of custom indices, base 100 at October 8 2026. Current values: ${(v2?.indices ?? []).map(i => `${i.name} ${i.value.toFixed(1)}`).join(", ")}. The same values are listed in text beside the chart.`}>
@@ -2931,19 +3574,19 @@ export function App() {
               </div>
               <p className="text-[11px] mt-2 leading-relaxed" style={{ color: "var(--faint)" }}>{v2?.indices[0]?.note ?? ""}</p>
             </div>
-            <div className="rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
+            <div className="rounded-2xl p-4" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-display font-bold flex-1">Heatmap — size = value, colour = change</p>
                 {(["portfolio", "watchlist"] as const).map(m => <button key={m} onClick={() => setHeatmapMode(m)} aria-pressed={heatmapMode === m} aria-label={`Heatmap: ${m}`} className="touch-target rounded-full px-3 py-1.5 text-xs font-bold border capitalize" style={heatmapMode === m ? { background: "var(--sel-bg)", color: "var(--sel-ink)", borderColor: "var(--sel-edge)" } : { borderColor: "var(--border)", color: "var(--dim)" }}>{m}</button>)}
               </div>
-              <p className="text-xs mt-1" style={{ color: "var(--dim)" }}>Grey = no 30d change data on file (honest, not zero). Tap a portfolio tile to open the card.</p>
+              <p className="text-xs mt-1" style={{ color: "var(--dim)" }}>{heatmapMode === "portfolio" ? "Grey = no change data on file (honest, not zero). Tap a tile to open the card." : "Colour = change since the first recorded price point (Oct 8, 2026 seed). Grey = awaiting second check. Tap a tile to view the watch item."}</p>
               {heatmapMode === "portfolio" ? (
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {[...active].filter(c => c.effectiveUsd != null).sort((a, b) => (b.effectiveUsd ?? 0) - (a.effectiveUsd ?? 0)).map(c => {
                     const ch = cardChange30(c.cert);
                     const bg = ch == null ? "rgba(140,140,140,0.35)" : ch >= 0 ? `rgba(63,182,143,${Math.min(0.75, 0.25 + Math.abs(ch) / 60)})` : `rgba(224,90,58,${Math.min(0.75, 0.25 + Math.abs(ch) / 60)})`;
                     return (
-                      <button key={c.cert} onClick={() => openCardDetail(c.cert)} aria-label={`Open ${c.name} from heatmap — value ${fmt(c.effectiveUsd)}`} className="touch-target rounded-xl px-3 py-2 text-left" style={{ background: bg, flexGrow: Math.max(1, Math.round((c.effectiveUsd ?? 0) / 220)), flexBasis: 110, border: "1px solid rgba(0,0,0,0.35)" }}>
+                      <button key={c.cert} onClick={() => openCardDetail(c.cert)} aria-label={`Open ${c.name} from heatmap — value ${fmt(c.effectiveUsd)}`} className="touch-target rounded-xl px-3 py-2 text-left" style={{ background: bg, flexGrow: Math.max(2.5, Math.sqrt(c.effectiveUsd ?? 0)), flexBasis: 0, minWidth: 104, border: "1px solid rgba(0,0,0,0.35)" }}>
                         <span className="block text-xs font-bold leading-tight">{c.name}</span>
                         <span className="num block text-xs mt-0.5">{fmt(c.effectiveUsd)} {ch != null ? `· ${ch >= 0 ? "+" : ""}${ch.toFixed(0)}%` : "· no data"}</span>
                         <span className="block"><Sparkline values={(salesByCert.get(c.cert) ?? []).filter(s => s.verified).map(s => s.price)} width={52} height={14} /></span>
@@ -2953,13 +3596,13 @@ export function App() {
                 </div>
               ) : (
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {(data.terminal ?? []).filter(t => t.subjectType === "watchlist" && t.marketUsd != null).slice(0, 18).map(t => (
-                    <div key={t.subjectKey} className="rounded-xl px-3 py-2" style={{ background: "rgba(140,140,140,0.35)", flexGrow: Math.max(1, Math.round((t.marketUsd ?? 0) / 60)), flexBasis: 110, border: "1px solid rgba(0,0,0,0.35)" }}>
+                  {watchHeatTiles.map(t => (
+                    <button key={t.id} onClick={() => goWatchItem(t.id)} aria-label={`View watch item ${t.name} — reference ${fmt(t.value)}`} className="touch-target rounded-xl px-3 py-2 text-left" style={{ background: t.bg, flexGrow: Math.max(2.5, Math.sqrt(t.value)), flexBasis: 0, minWidth: 104, border: "1px solid rgba(0,0,0,0.35)" }}>
                       <span className="block text-xs font-bold leading-tight">{t.name}</span>
-                      <span className="num block text-xs mt-0.5">{fmt(t.marketUsd)} · grey — no 30d data</span>
-                    </div>
+                      <span className="num block text-xs mt-0.5">{fmt(t.value)} {t.change != null ? `· ${t.change >= 0 ? "+" : ""}${t.change.toFixed(0)}% ${t.windowLabel}` : "· awaiting second check"}</span>
+                    </button>
                   ))}
-                  {(data.terminal ?? []).filter(t => t.subjectType === "watchlist" && t.marketUsd != null).length === 0 && <p className="text-sm" style={{ color: "var(--dim)" }}>No watchlist items with a single defensible market figure yet.</p>}
+                  {watchHeatTiles.length === 0 && <p className="text-sm" style={{ color: "var(--dim)" }}>No watchlist items with a single defensible market figure yet.</p>}
                 </div>
               )}
             </div>
@@ -2974,24 +3617,24 @@ export function App() {
           <div className="mt-4 grid gap-4 xl:grid-cols-2">
             <div className="grid gap-2 content-start">
               {(v2?.pump ?? []).slice(0, 8).map(p => (
-                <article key={p.cert} className="rounded-2xl px-4 py-3" style={{ background: "var(--glass)", border: p.level === "High" ? "1.5px solid var(--sell)" : "1px solid var(--hairline)" }}>
+                <article key={p.cert} className="rounded-2xl px-4 py-3" style={{ background: "var(--surface-2)", border: p.level === "High" ? "1.5px solid var(--sell)" : "1px solid var(--hairline)" }}>
                   <p className="flex flex-wrap items-baseline gap-2 text-sm"><strong className="flex-1 min-w-[170px]">{p.name}</strong><span className="text-[11px] font-black px-2 py-0.5 rounded-full" style={{ background: p.level === "High" ? "var(--sell)" : p.level === "Watch" ? "var(--trim)" : "rgba(63,182,143,0.25)", color: p.level === "High" || p.level === "Watch" ? "var(--ink-on-fill)" : "var(--text)" }}>{p.level.toUpperCase()} · {p.score}</span><DeltaChip value={cardChange30(p.cert)} /></p>
                   <ul className="mt-1.5 grid gap-0.5 text-sm" style={{ color: "var(--dim)" }}>{p.factors.map(f => <li key={f}>• {f}</li>)}</ul>
                 </article>
               ))}
             </div>
-            <div className="rounded-2xl p-4 content-start" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
+            <div className="rounded-2xl p-4 content-start" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
               <p className="font-display font-bold">Pop dilution — scarcity erosion watch</p>
               <p className="text-xs mt-0.5" style={{ color: "var(--dim)" }}>PSA pop tracked across refreshes. Alert state when a holding's pop grows &gt;10% in 30 days. Baseline seeded Oct 8, 2026 — velocity accrues from real refreshes, never backfilled.</p>
               <div className="mt-3 grid gap-2">
                 {(v2?.pops ?? []).map(p => (
                   <p key={p.cert} className="rounded-xl px-3 py-2.5 text-sm" style={{ background: p.alert ? "rgba(224,90,58,0.10)" : "var(--surface-alt)", border: p.alert ? "1px solid var(--sell)" : "1px solid transparent" }}>
-                    <strong>{p.cardName}</strong> <span className="num">· pop {p.popTotal.toLocaleString()}{p.popGrade != null ? ` (grade pop ${p.popGrade.toLocaleString()})` : ""}</span><br />
+                    <strong>{p.cardName}</strong><br /><span className="num">pop {p.popTotal.toLocaleString()}{p.popGrade != null && p.popGrade !== p.popTotal ? ` (grade pop ${p.popGrade.toLocaleString()})` : ""}</span><br />
                     <span style={{ color: "var(--dim)" }}>{p.velocityPct == null ? "Velocity: baseline only — first refresh comparison pending" : `Velocity: ${p.velocityPct > 0 ? "+" : ""}${p.velocityPct}%`} {p.alert ? "· ⚠ ALERT — scarcity eroding" : ""} · recorded {p.recordedAt}</span>
                   </p>
                 ))}
               </div>
-              <p className="text-[11px] mt-2" style={{ color: "var(--faint)" }}>Seeded pops are recorded per card above; velocity compares each new reading against the previous one.</p>
+              <p className="text-[11px] mt-2" style={{ color: "var(--faint)" }}>Seeded pops: Giratina LV.X total 156 · Gengar Prime PSA 9 pop 903 / total 3,054 · Mega Gengar PSA 10 pop 9,549 · Magikarp PSA 9 pop ~12,986.</p>
             </div>
           </div>
           {/* ——— Round 4: Team Rocket holding stress tests ——— */}
@@ -3001,60 +3644,25 @@ export function App() {
             {(v2?.rocket.holdingFlags ?? []).length > 0 ? (
               <div className="mt-3 grid gap-2">
                 {(v2?.rocket.holdingFlags ?? []).map(f => (
-                  <p key={f.cert} className="rounded-xl px-3 py-2.5 text-sm flex flex-wrap gap-x-4 gap-y-0.5" style={{ background: "var(--glass)" }}>
-                    <strong className="flex-1 min-w-[180px]">{f.name}</strong>
+                  <div key={f.cert} className="rounded-xl px-3 py-2.5 text-sm" style={{ background: "var(--surface-2)" }}>
+                    <p><strong>{f.name}</strong></p>
+                    <p className="mt-0.5 flex flex-wrap gap-x-4 gap-y-0.5">
                     <span>Held value <strong className="num">{fmt(f.heldValue)}</strong></span>
                     <span>Cheapest live ask <strong className="num">{fmt(f.bestAsk)}</strong></span>
                     <span className="font-bold" style={{ color: "var(--sell)" }}>▼ {f.pctUnder.toFixed(1)}% under held value</span>
                     <button onClick={() => openCardDetail(f.cert)} aria-label={`Open ${f.name} detail page`} className="font-bold underline underline-offset-2" style={{ color: "var(--accent-ink)" }}>Open card</button>
-                  </p>
+                    </p>
+                  </div>
                 ))}
               </div>
             ) : <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>No holding is failing the stress test right now — no live ask undercuts a held value by more than 8%. (Rocket is displeased. The twerp's portfolio survives another sweep.)</p>}
           </div>
         </section>
 
-        {/* ——— V2 PAPER LEAGUE + EVOLUTION (D) ——— */}
-        <section id="v2-league" aria-label="Scout paper-trading league and evolution" className="quiet-panel mt-8 p-4 sm:p-6 scroll-mt-24">
-          <p className="kicker" style={{ color: "var(--accent-ink)" }}>🏆 Scout Paper-Trading League — PAPER ONLY, no real trades</p>
-          <h2 className="font-display text-2xl sm:text-3xl font-bold mt-1.5">Which scout actually finds value?</h2>
-          <p className="text-sm mt-1 max-w-3xl" style={{ color: "var(--dim)" }}>Each scout paper-buys its qualifying finds at find price (Tier 1 full position, Tier 2 half) against a hypothetical $10,000 paper bankroll, marked to market on refresh. Hypothetical P&amp;L only — the league influences nothing automatically. When win rate / paper P&amp;L crosses thresholds, a scout's sprite <strong style={{ color: "var(--text)" }}>evolves</strong> — Eevee is the showcase.</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {[...(v2?.paper ?? [])].sort((a, b) => b.pnl - a.pnl).map((p, rank) => {
-              const scout = scoutById.get(p.scoutId);
-              return (
-                <article key={p.scoutId} className="rounded-2xl p-4" style={{ background: "var(--glass)", border: p.stage >= 2 ? "1.5px solid var(--accent)" : "1px solid var(--hairline)" }}>
-                  <div className="flex items-center gap-3">
-                    <div style={{ transform: `scale(${1 + p.stage * 0.09})`, transformOrigin: "center" }}><ScoutAvatar scout={scout} size={44 + p.stage * 4} /></div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-sm leading-tight">#{rank + 1} {scout?.name ?? p.scoutId}</p>
-                      <p className="text-xs font-bold" style={{ color: "var(--accent-ink)" }}>{p.stage >= 2 ? "✨ EVOLVED — " : ""}{p.evolution}</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                    <p className="rounded-lg px-2.5 py-1.5" style={{ background: "var(--surface-alt)" }}>Paper P&amp;L<br /><strong className="num" style={{ color: p.pnl >= 0 ? "var(--hold)" : "var(--sell)" }}>{p.pnl >= 0 ? "+" : ""}{fmt(p.pnl)}</strong></p>
-                    <p className="rounded-lg px-2.5 py-1.5" style={{ background: "var(--surface-alt)" }}>Win rate<br /><strong className="num">{p.winRate.toFixed(0)}%</strong></p>
-                    <p className="rounded-lg px-2.5 py-1.5" style={{ background: "var(--surface-alt)" }}>Finds<br /><strong className="num">{p.finds}</strong></p>
-                    <p className="rounded-lg px-2.5 py-1.5" style={{ background: "var(--surface-alt)" }}>Positions<br /><strong className="num">{p.positions}</strong> · <span className="num">{fmt(p.invested)}</span> in</p>
-                  </div>
-                  <p className="text-[11px] mt-2" style={{ color: "var(--faint)" }}>Paper bankroll {fmt(p.bankroll)} · evolution stage {p.stage}/3 — thresholds: stage 2 at paper P&amp;L &gt;$300 or win rate ≥55%, stage 3 at &gt;$1,500 or (≥60% and &gt;$500).</p>
-                </article>
-              );
-            })}
-          </div>
-          {(v2?.paperPositions ?? []).length > 0 ? (
-            <div className="mt-4 grid gap-1.5">
-              {(v2?.paperPositions ?? []).slice(0, 10).map(pos => (
-                <p key={pos.id} className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm rounded-xl px-3 py-2" style={{ background: "var(--glass)" }}>
-                  <span className="flex-1 min-w-[170px]"><strong>{pos.cardName}</strong> <span style={{ color: "var(--dim)" }}>· {pos.scoutId} · {pos.sizeFactor === 1 ? "full" : "half"} position</span></span>
-                  <span className="num">entry {fmt(pos.entryUsd)} → market {fmt(pos.marketUsd)}</span>
-                  <span className="num font-bold" style={{ color: pos.pnl >= 0 ? "var(--hold)" : "var(--sell)" }}>{pos.pnl >= 0 ? "+" : ""}{fmt(pos.pnl)} paper</span>
-                </p>
-              ))}
-            </div>
-          ) : <p className="mt-3 text-sm" style={{ color: "var(--dim)" }}>No paper positions yet — positions open automatically when a sweep pins a Tier 1 / Tier 2 find.</p>}
+        {/* ——— Scout Field Journal (the paper league section was removed Oct 14, 2026 — this section is kept as the journal + nav target) ——— */}
+        <section id="v2-league" aria-label="Scout field journal" className="quiet-panel mt-8 p-4 sm:p-6 scroll-mt-24">
           {/* ——— Round 4: Scout Field Journal (from logged sweep records only) ——— */}
-          <details className="mt-5 rounded-2xl px-4 py-3" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
+          <details className="rounded-2xl px-4 py-3" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
             <summary className="cursor-pointer font-display font-bold min-h-[44px] flex items-center" aria-label="Scout field journal — expand for the latest in-character shift logs">📓 Scout Field Journal — latest shift per scout <span className="text-xs font-sans font-normal ml-2" style={{ color: "var(--dim)" }}>(generated only from each scout's logged sweep records — the data wins over the diary, always)</span></summary>
             <div className="mt-2 grid gap-2.5">
               {(v2?.journal ?? []).map(j => (
@@ -3070,13 +3678,13 @@ export function App() {
         </section>
 
         {/* ——— V2 BID/ASK + EXIT DESK (G) ——— */}
-        <section id="v2-exit" aria-label="Bid ask spread board and Exit Desk" className="quiet-panel mt-8 p-4 sm:p-6 scroll-mt-24">
-          <p className="kicker" style={{ color: "var(--accent-ink)" }}>⚖️ Bid/Ask Board + Exit Desk</p>
+        <section id="v2-exit" aria-label="Bid ask spread board" className="quiet-panel mt-8 p-4 sm:p-6 scroll-mt-24">
+          <p className="kicker" style={{ color: "var(--accent-ink)" }}>⚖️ Bid/Ask Board</p>
           <h2 className="font-display text-2xl sm:text-3xl font-bold mt-1.5">The sell side, with receipts</h2>
-          <p className="text-sm mt-1 max-w-3xl" style={{ color: "var(--dim)" }}>Every figure is source-labeled: <strong style={{ color: "var(--text)" }}>ask = active listing</strong>, <strong style={{ color: "var(--text)" }}>bid = live auction state</strong>, <strong style={{ color: "var(--text)" }}>sale = verified comp</strong>. Wide spread or no bids = liquidity warning. Exit Desk drafts listings only — The owner posts and sells. No automated selling, and no buying automation.</p>
+          <p className="text-sm mt-1 max-w-3xl" style={{ color: "var(--dim)" }}>Every figure is source-labeled: <strong style={{ color: "var(--text)" }}>ask = active listing</strong>, <strong style={{ color: "var(--text)" }}>bid = live auction state</strong>, <strong style={{ color: "var(--text)" }}>sale = verified comp</strong>. Wide spread or no bids = liquidity warning.</p>
           <div className="mt-4 grid gap-2.5">
             {(v2?.spreads ?? []).map(s => (
-              <article key={s.key} className="rounded-2xl px-4 py-3" style={{ background: "var(--glass)", border: s.warning ? "1px solid rgba(224,90,58,0.5)" : "1px solid var(--hairline)", position: "relative", overflow: "hidden" }}>
+              <article key={s.key} className="rounded-2xl px-4 py-3" style={{ background: "var(--surface-2)", border: s.warning ? "1px solid rgba(224,90,58,0.5)" : "1px solid var(--hairline)", position: "relative", overflow: "hidden" }}>
                 {s.bestAsk != null && s.lastSale != null && s.lastSale > 0 && <div aria-hidden style={{ position: "absolute", inset: 0, width: `${Math.min(100, (s.bestAsk / s.lastSale) * 100)}%`, background: "rgba(217,164,65,0.07)", pointerEvents: "none" }} />}
                 <p className="relative font-semibold text-sm">{s.name} <span className="font-normal" style={{ color: "var(--dim)" }}>· {s.gradeLabel}</span></p>
                 <div className="relative mt-1.5 flex flex-wrap gap-x-5 gap-y-1 text-sm">
@@ -3090,17 +3698,6 @@ export function App() {
               </article>
             ))}
           </div>
-          <h3 className="font-display text-xl font-bold mt-6">Exit Desk — Sell / Trim cards</h3>
-          <p className="text-sm mt-1" style={{ color: "var(--dim)" }}>Live bid watch: a watched auction’s current bid can appear as the live-bid reference on the board above until the lot closes. Generate a draft and it is built from the card's data + provenance with a comp-based, source-labeled price suggestion.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {active.filter(c => c.advisorCall.includes("SELL") || c.advisorCall.includes("TRIM")).map(c => (
-              <button key={c.cert} onClick={() => exitDraftMut.mutate({ cert: c.cert })} aria-label={`Generate listing draft for ${c.name}`} className="touch-target rounded-full px-4 py-2.5 text-sm font-bold border" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)" }}>✎ Draft listing — {c.name} ({fmt(c.effectiveUsd)})</button>
-            ))}
-          </div>
-          <div className="mt-4 grid gap-3 xl:grid-cols-2">
-            {(v2?.exits ?? []).map(d => <ExitDraftCard key={d.id} draft={d} onUpdate={(args) => exitUpdateMut.mutate(args)} />)}
-          </div>
-          {(v2?.exits ?? []).length === 0 && <p className="mt-3 text-sm" style={{ color: "var(--dim)" }}>No drafts yet — generate one above when the time feels right.</p>}
         </section>
 
         {/* ——— NPC TOWN MARKET — training range ——— */}
@@ -3121,7 +3718,7 @@ export function App() {
             return (
               <div className="mt-4 grid gap-3 lg:grid-cols-3">
                 {vendors.map((v, vi) => (
-                  <article key={v.name} className="rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
+                  <article key={v.name} className="rounded-2xl p-4" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
                     <div className="flex items-center gap-3">
                       <PixelSprite scoutId={v.sprite} size={46} />
                       <div><p className="font-semibold text-sm leading-tight">{v.name}</p><p className="text-xs italic" style={{ color: "var(--dim)" }}>{v.blurb}</p></div>
@@ -3167,7 +3764,7 @@ export function App() {
               { name: "Autumn", when: "November 2026", live: todNow >= new Date("2026-11-01T00:00:00") && todNow <= new Date("2026-11-30T23:59:59"), desc: "Leaf-drift paths, harvest palette over the town. Data entry in the calendar — no rebuild needed." },
               { name: "Snow", when: "December 2026", live: todNow >= new Date("2026-12-01T00:00:00") && todNow <= new Date("2026-12-31T23:59:59"), desc: "Snowfall over the grass, frozen pond, warm windows. Data entry in the calendar — no rebuild needed." },
             ].map(ev => (
-              <article key={ev.name} className="rounded-2xl px-4 py-3" style={{ background: "var(--glass)", border: ev.live ? "1.5px solid var(--accent)" : "1px solid var(--hairline)" }}>
+              <article key={ev.name} className="rounded-2xl px-4 py-3" style={{ background: "var(--surface-2)", border: ev.live ? "1.5px solid var(--accent)" : "1px solid var(--hairline)" }}>
                 <p className="font-semibold text-sm">{ev.name} {ev.live && <span className="text-[11px] font-black px-2 py-0.5 rounded-full" style={{ background: "var(--accent)", color: "#1a0b36" }}>LIVE</span>}</p>
                 <p className="text-xs mt-0.5" style={{ color: "var(--accent-ink)" }}>{ev.when}</p>
                 <p className="text-sm mt-1" style={{ color: "var(--dim)" }}>{ev.desc}</p>
@@ -3175,7 +3772,7 @@ export function App() {
             ))}
           </div>
           {/* ——— Round 4: Town Chronicle — growth milestones from real data ——— */}
-          <div className="mt-5 rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
+          <div className="mt-5 rounded-2xl p-4" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
             <p className="font-display font-bold">🏘 Town Chronicle — what the town has built <span className="text-xs font-sans font-normal" style={{ color: "var(--dim)" }}>(structures appear in the town itself only when the milestone is truly met — never faked)</span></p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {(v2?.milestones ?? []).map(m => (
@@ -3185,53 +3782,11 @@ export function App() {
                 </p>
               ))}
             </div>
-            {(() => { const next = (v2?.milestones ?? []).find(m => !m.met); return next ? <p className="mt-3 text-sm font-semibold">Next goal marker: <span style={{ color: "var(--accent-ink)" }}>{next.icon} {next.label}</span> — {next.condition}. <span className="font-normal" style={{ color: "var(--dim)" }}>{next.evidence}</span></p> : <p className="mt-3 text-sm font-semibold" style={{ color: "var(--hold)" }}>Every milestone is built — the town is complete. For now.</p>; })()}
+            {(() => { const next = (v2?.milestones ?? []).find(m => !m.met); return next ? <p className="mt-3 text-sm font-semibold">Next goal marker: <span style={{ color: "var(--text)" }}>{next.icon} {next.label}</span> — {next.condition}. <span className="font-normal" style={{ color: "var(--dim)" }}>{next.evidence}</span></p> : <p className="mt-3 text-sm font-semibold" style={{ color: "var(--hold)" }}>Every milestone is built — the town is complete. For now.</p>; })()}
           </div>
         </section>
 
-        {/* ——— SLAB LINEAGE + SIBLING WATCH ——— */}
-        <section id="v2-lineage" aria-label="Slab Lineage — cert watch management; full biographies open in the card detail" className="quiet-panel mt-8 p-4 sm:p-6 scroll-mt-24">
-          <p className="kicker" style={{ color: "var(--accent-ink)" }}>🧬 Slab Lineage + Sibling Watch</p>
-          <h2 className="font-display text-2xl sm:text-3xl font-bold mt-1.5">Cert watch — management</h2>
-          <p className="text-sm mt-1 max-w-3xl leading-relaxed" style={{ color: "var(--dim)" }}>All 45 owned certs are auto-enrolled, seeded from card data, your provided acquisition events, and recorded sales evidence. Sweeps and the daily refresh match cert-number strings in listing titles/descriptions (eBay, Fanatics, major auction houses) against watched certs — a new appearance appends to that cert's timeline and fires an alert + digest entry. PSA cert status is re-checked where feasible; a deactivated/changed cert is recorded as <strong style={{ color: "var(--text)" }}>“cert status changed — possible regrade/crossover” — an inference to verify, not a fact</strong>. CGC uses the same string matching, with thinner verification coverage.</p>
-          <p className="mt-2 rounded-xl px-4 py-2.5 text-sm font-semibold" style={{ background: "rgba(217,164,65,0.09)", border: "1px solid var(--hairline)" }}>Hard limit: public appearances only — private sales and listings that don't print cert numbers are invisible to this. Private sales appear only if reported. Never infer an owner identity from an appearance.</p>
-          <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>This page is the watch list only — <strong style={{ color: "var(--text)" }}>tap any cert to open its card's detail page</strong>, where the biography timeline and sibling certs live — scoped to that card only.</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {(v2?.lineageWatch ?? []).map(w => {
-              const latest = (v2?.lineageEvents ?? []).filter(e => e.cert === w.cert)[0];
-              const ownedCard = (data.cards ?? []).find(c => c.cert === w.cert);
-              const firstToken = (w.label.split(" ")[0] ?? "").toLowerCase();
-              const relatedCard = ownedCard ?? (data.cards ?? []).find(c => firstToken.length > 2 && c.name.toLowerCase().startsWith(firstToken));
-              return (
-                <button key={w.cert} onClick={() => { setLineageCert(w.cert); if (relatedCard) openCardDetail(relatedCard.cert); }} aria-label={relatedCard ? `Open card detail for ${relatedCard.name} — lineage cert ${w.cert}, ${w.label}` : `Select watched cert ${w.cert} — ${w.label}`} className="touch-target rounded-full px-3.5 py-2 text-xs font-bold text-left" style={{ border: w.relation === "owned" ? "1.5px solid var(--accent)" : w.relation === "sibling" ? "1.5px dashed #8b7fd4" : "1px solid var(--border)", color: "var(--text)", background: "var(--glass)" }}>
-                  {w.relation === "owned" ? "🟢 OWNED" : w.relation === "sibling" ? "👀 SIBLING — NOT OWNED" : "🔎 WATCHED"} · {w.cert}<br />
-                  <span className="font-normal">{w.label}{latest ? ` · latest: ${latest.venue} ${latest.eventDate}` : " · no events yet"}</span>
-                </button>
-              );
-            })}
-          </div>
-          {(() => {
-            const w = (v2?.lineageWatch ?? []).find(x => x.cert === lineageCert);
-            if (!w) return null;
-            const count = (v2?.lineageEvents ?? []).filter(e => e.cert === lineageCert).length;
-            return (
-              <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl px-4 py-3" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
-                <p className="text-sm flex-1 min-w-[220px]"><strong>Cert {w.cert}</strong> — {w.label} · <span style={{ color: "var(--dim)" }}>{count} event{count === 1 ? "" : "s"} on file — the full timeline renders on the card's detail page.</span></p>
-                <button onClick={() => exportLineage(w.cert)} aria-label={`Export lineage record for cert ${w.cert} as JSON — passport-ready`} className="touch-target rounded-full px-3 py-2 text-xs font-bold border" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)" }}>⬇ Export record (JSON)</button>
-                {w.relation === "watched" && <button onClick={() => lineageRemoveMut.mutate({ cert: w.cert })} aria-label={`Remove cert ${w.cert} from lineage watch`} className="touch-target rounded-full px-3 py-2 text-xs font-bold border" style={{ borderColor: "var(--sell)", color: "var(--sell)" }}>Remove watch</button>}
-              </div>
-            );
-          })()}
-          <div className="mt-4 rounded-2xl p-4" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
-            <p className="font-semibold text-sm">Add a cert to the sibling watch</p>
-            <p className="text-xs mt-0.5" style={{ color: "var(--dim)" }}>Siblings of owned certs, or any cert of interest. Only appearances with a real source/link are ever recorded — no source, no event.</p>
-            <div className="mt-2 flex flex-col sm:flex-row gap-2">
-              <input aria-label="New lineage watch cert number" value={newLineageCert} onChange={e => setNewLineageCert(e.target.value)} placeholder="Cert number" inputMode="numeric" className="touch-target rounded-full px-4 py-2.5 text-sm outline-none" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }} />
-              <input aria-label="Label for new lineage watch cert" value={newLineageLabel} onChange={e => setNewLineageLabel(e.target.value)} placeholder="Label (e.g. sibling copy)" className="touch-target flex-1 rounded-full px-4 py-2.5 text-sm outline-none" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }} />
-              <button onClick={() => { if (newLineageCert.trim().length >= 3) { lineageAddMut.mutate({ cert: newLineageCert.trim(), label: newLineageLabel.trim() }); setLineageCert(newLineageCert.trim()); setNewLineageCert(""); setNewLineageLabel(""); } }} aria-label="Add cert to lineage watch" className="touch-target rounded-full px-5 py-2.5 text-sm font-bold" style={{ background: "var(--accent)", color: "#1a0b36" }}>Watch this cert</button>
-            </div>
-          </div>
-        </section>
+
 
         </div>
 
@@ -3239,22 +3794,28 @@ export function App() {
           <div>
             <p className="kicker" style={{ color: "var(--hold)" }}>📒 Findings Ledger — kept for good</p>
             <h2 className="font-display text-2xl font-bold mt-1.5">Every scout finding, in one place</h2>
-            <p className="text-sm mt-1 leading-relaxed" style={{ color: "var(--dim)" }}>This ledger is the <strong style={{ color: "var(--text)" }}>single home for every scout finding</strong> — pinned deals live in its Pinned tab, and findings never vanish from here. Each one is stored with when it was first found, who found it, where, its link, ask, market/comp and % of market at time found — deduped by listing URL, so a re-found listing updates its last-seen and price instead of duplicating.</p>
-            <p className="text-xs mt-1.5 leading-relaxed" style={{ color: "var(--faint)" }}>How a find qualifies: <strong style={{ color: "var(--dim)" }}>Tier 1 pinned</strong> = linked &amp; ≥15% under a verified comp · <strong style={{ color: "var(--dim)" }}>Close</strong> = 8–15% under comp (or under a watchlist max-buy), linked · no link = sighting, never a deal.</p>
             <p className="mt-4 inline-flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-2.5 text-[13px] sm:text-sm font-bold" style={{ background: "rgba(63,182,143,0.12)", border: "1px solid rgba(63,182,143,0.45)", color: "var(--text)" }}>
               <span aria-hidden>🔗</span> {ledgerSummary}
             </p>
+            {ledgerScout && (
+              <div className="mt-3">
+                <button onClick={() => setLedgerScoutId(null)} aria-label={`Dismiss ${ledgerScout.name}'s finds — show all findings`} className="touch-target inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold border" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)", background: "var(--surface-2)" }}>
+                  {ledgerScout.name}&apos;s finds <span aria-hidden>✕</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Primary segmentation: deal tier tabs with count badges */}
-          <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Ledger segment by deal tier">
+          {/* Single segmented row of 4 (owner, Oct 14): All findings ·
+              Live (Pinned + Close) · Unverified (Stale + Sightings) ·
+              Expired / Gone — each with its count. The Scout / Market /
+              Target / Status pill rows are removed entirely;
+              attribution lives on each finding card already. */}
+          <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Ledger segment">
             {([
-              { id: "all" as const, label: "All findings", count: ledgerAll.filter(d => d.status !== "gone" && d.status !== "bought").length },
-              { id: "pinned" as const, label: "📌 Pinned deals", count: ledgerPinned.length },
-              { id: "close" as const, label: "🔎 Close — worth a look", count: ledgerClose.length },
-              { id: "stale" as const, label: "⚠ Stale — unverified", count: ledgerStale.length },
-              { id: "sightings" as const, label: "👀 Sightings", count: ledgerSightings.length },
-              { id: "acquired" as const, label: "✓ Acquired via scouts", count: ledgerBought.length },
+              { id: "all" as const, label: "All findings", count: ledgerAll.filter(d => d.status !== "gone").length },
+              { id: "live" as const, label: "Live", count: ledgerLive.length },
+              { id: "unverified" as const, label: "Unverified", count: ledgerUnverified.length },
               { id: "expired" as const, label: "Expired / Gone", count: ledgerGone.length },
             ]).map(t => (
               <button key={t.id} onClick={() => setLedgerTier(t.id)} aria-label={`Ledger segment: ${t.label}, ${t.count} findings`} aria-pressed={ledgerTier === t.id} className="rounded-full px-3.5 py-2 text-xs font-bold border inline-flex items-center gap-1.5" style={ledgerTier === t.id ? { background: "var(--sel-bg)", color: "var(--sel-ink)", borderColor: "var(--sel-edge)" } : { borderColor: "var(--border)", color: "var(--dim)", background: "rgba(0,0,0,0.3)" }}>
@@ -3263,40 +3824,7 @@ export function App() {
             ))}
           </div>
 
-          {/* Filter chips: scout / marketplace / target group / status */}
-          <div className="mt-4 grid gap-3">
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter ledger by scout">
-              <span className="text-[11px] font-bold uppercase tracking-wider mr-1" style={{ color: "var(--faint)" }}>Scout</span>
-              {["All", ...data.scouts.map(s => s.scoutId)].map(id => {
-                const sc = id === "All" ? null : scoutById.get(id);
-                const count = id === "All" ? ledgerAll.length : ledgerAll.filter(d => d.scoutId === id).length;
-                return <button key={id} onClick={() => setLedgerScout(id)} aria-label={`Filter by scout: ${sc ? sc.name : "All scouts"}`} aria-pressed={ledgerScout === id} className="rounded-full px-2.5 py-1 text-[11px] font-semibold border" style={ledgerScout === id ? { background: "var(--surface-alt)", color: "var(--text)", borderColor: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--dim)" }}>{sc ? `${sc.emoji} ${sc.name}` : "All scouts"} · {count}</button>;
-              })}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter ledger by marketplace">
-              <span className="text-[11px] font-bold uppercase tracking-wider mr-1" style={{ color: "var(--faint)" }}>Market</span>
-              {["All", ...ledgerMarkets].map(m => (
-                <button key={m} onClick={() => setLedgerMarket(m)} aria-label={`Filter by marketplace: ${m}`} aria-pressed={ledgerMarket === m} className="rounded-full px-2.5 py-1 text-[11px] font-semibold border" style={ledgerMarket === m ? { background: "var(--surface-alt)", color: "var(--text)", borderColor: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--dim)" }}>{m === "All" ? "All marketplaces" : m} · {m === "All" ? ledgerAll.length : ledgerAll.filter(d => (d.marketplace.split("—")[0]?.trim() ?? d.marketplace) === m).length}</button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter ledger by target group">
-              <span className="text-[11px] font-bold uppercase tracking-wider mr-1" style={{ color: "var(--faint)" }}>Target</span>
-              {["All", ...ledgerGroups].map(g => (
-                <button key={g} onClick={() => setLedgerGroup(g)} aria-label={`Filter by target group: ${g}`} aria-pressed={ledgerGroup === g} className="rounded-full px-2.5 py-1 text-[11px] font-semibold border" style={ledgerGroup === g ? { background: "var(--surface-alt)", color: "var(--text)", borderColor: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--dim)" }}>{g === "All" ? "All targets" : g} · {g === "All" ? ledgerAll.length : ledgerAll.filter(d => (d.targetGroup || "Watchlist") === g).length}</button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter ledger by status">
-              <span className="text-[11px] font-bold uppercase tracking-wider mr-1" style={{ color: "var(--faint)" }}>Status</span>
-              {["All", ...ledgerStatuses].map(s => (
-                <button key={s} onClick={() => setLedgerStatus(s)} aria-label={`Filter by status: ${s}`} aria-pressed={ledgerStatus === s} className="rounded-full px-2.5 py-1 text-[11px] font-semibold border capitalize" style={ledgerStatus === s ? { background: "var(--surface-alt)", color: "var(--text)", borderColor: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--dim)" }}>{s === "All" ? "Any status" : s.replace("_", " ")} · {s === "All" ? ledgerAll.length : ledgerAll.filter(d => d.status === s).length}</button>
-              ))}
-              {(ledgerScout !== "All" || ledgerMarket !== "All" || ledgerGroup !== "All" || ledgerStatus !== "All") && (
-                <button onClick={() => { setLedgerScout("All"); setLedgerMarket("All"); setLedgerGroup("All"); setLedgerStatus("All"); }} aria-label="Clear ledger filters" className="rounded-full px-2.5 py-1 text-[11px] font-bold underline" style={{ color: "var(--accent-ink)" }}>Clear filters ✕</button>
-              )}
-            </div>
-          </div>
-
-          <p className="mt-3 text-xs" style={{ color: "var(--faint)" }}>Showing {ledgerFiltered.length} of {ledgerAll.length} kept findings{ledgerTier === "all" && ledgerGone.length > 0 ? " (expired hidden — open the Expired tab or the collapsed section below)" : ""}</p>
+          <p className="mt-3 text-xs" style={{ color: "var(--faint)" }}>Showing {ledgerFiltered.length} of {ledgerAll.length} kept findings{ledgerScout ? ` — scoped to ${ledgerScout.name}` : ""}{ledgerTier === "all" && ledgerGone.length > 0 ? " (expired live in the Expired / Gone segment and the record below)" : ""}</p>
 
           {ledgerFiltered.length > 0 ? (
             <div className="mt-3 grid gap-3 lg:grid-cols-2">
@@ -3306,18 +3834,18 @@ export function App() {
                 const isBought = d.status === "bought";
                 const isStale = d.status === "stale";
                 const statusStyle: Record<string, { label: string; color: string; bg: string }> = {
-                  new: { label: "● New — latest sweep", color: "var(--accent-ink)", bg: "var(--accent-dim)" },
-                  live: { label: "● Live — re-verified", color: "var(--hold)", bg: "rgba(63,182,143,0.15)" },
-                  price_dropped: { label: "↓ Price dropped", color: "var(--teal)", bg: "rgba(126,200,227,0.15)" },
-                  stale: { label: "⚠ Stale — unverified", color: "var(--trim)", bg: "rgba(255,217,77,0.14)" },
-                  gone: { label: "Gone — listing ended", color: "var(--faint)", bg: "var(--glass)" },
-                  bought: { label: "✓ Bought — acquired via scouts", color: "var(--hold)", bg: "rgba(63,182,143,0.2)" },
-                  sighting: { label: "Sighting — link unverified", color: "var(--faint)", bg: "var(--glass)" },
+                  new: { label: "● New", color: "var(--accent-ink)", bg: "var(--accent-dim)" },
+                  live: { label: "● Live", color: "var(--hold)", bg: "rgba(63,182,143,0.15)" },
+                  price_dropped: { label: "↓ Dropped", color: "var(--teal)", bg: "rgba(126,200,227,0.15)" },
+                  stale: { label: "⚠ Stale", color: "var(--trim)", bg: "rgba(255,217,77,0.14)" },
+                  gone: { label: "Gone", color: "var(--faint)", bg: "var(--surface-alt)" },
+                  bought: { label: "✓ Bought", color: "var(--hold)", bg: "rgba(63,182,143,0.2)" },
+                  sighting: { label: "Sighting", color: "var(--faint)", bg: "var(--surface-alt)" },
                 };
                 const st = statusStyle[d.status] ?? statusStyle.live!;
-                const tierLabel = !d.listingUrl ? "Sighting" : isStale ? "Stale — not a live deal" : isLedgerPinned(d) ? "Tier 1 · Pinned" : "Tier 2 · Close";
+                const tierLabel = !d.listingUrl ? "Sighting" : isStale ? "Stale" : isLedgerPinned(d) ? "Tier 1 · Pinned" : "Tier 2 · Close";
                 return (
-                  <article key={`${d.source}-${d.id}`} id={`ledger-${d.source}-${d.id}`} className="rounded-2xl p-4 scroll-mt-24" style={{ background: "var(--glass)", border: isGone ? "1px dashed var(--border)" : "1px solid var(--hairline)", opacity: isGone ? 0.72 : 1 }}>
+                  <article key={`${d.source}-${d.id}`} id={`ledger-${d.source}-${d.id}`} className="rounded-2xl p-4 scroll-mt-24" style={{ background: "var(--surface-2)", border: isGone ? "1px dashed var(--border)" : "1px solid var(--hairline)", opacity: isGone ? 0.72 : 1 }}>
                     <div className="flex items-start gap-3">
                       <ScoutAvatar scout={scout} size={38} />
                       <div className="flex-1 min-w-0">
@@ -3352,7 +3880,7 @@ export function App() {
                       {!d.listingUrl && <span className="mr-auto text-xs font-semibold" style={{ color: "var(--faint)" }}>🔗 No link on file — sighting only, never counted as a find</span>}
                       {!isBought && !isGone && d.source === "deal" && (
                         <>
-                          {isStale && <button onClick={() => findingStatusMut.mutate({ id: d.id, status: "live" })} aria-label={`Mark ${d.cardName} as live — verified manually`} className="rounded-full px-3.5 py-2 text-sm font-semibold border" style={{ borderColor: "var(--hold)", color: "var(--hold)", background: "var(--glass)" }}>Mark live — I verified it ✓</button>}
+                          {isStale && <button onClick={() => findingStatusMut.mutate({ id: d.id, status: "live" })} aria-label={`Mark ${d.cardName} as live — verified manually`} className="rounded-full px-3.5 py-2 text-sm font-semibold border" style={{ borderColor: "var(--hold)", color: "var(--hold)", background: "var(--surface-2)" }}>Mark live — I verified it ✓</button>}
                           <button onClick={() => findingStatusMut.mutate({ id: d.id, status: "bought" })} aria-label={`Mark ${d.cardName} as bought in ledger`} className="rounded-full px-3.5 py-2 text-sm font-semibold border" style={{ borderColor: "var(--hold)", color: "var(--hold)", background: "rgba(0,0,0,0.3)" }}>Bought ✓</button>
                         </>
                       )}
@@ -3368,31 +3896,16 @@ export function App() {
               })}
             </div>
           ) : (
-            <p className="mt-3 text-sm rounded-xl px-4 py-3 leading-relaxed" style={{ background: "var(--glass)", color: "var(--dim)" }}>
+            <p className="mt-3 text-sm rounded-xl px-4 py-3 leading-relaxed" style={{ background: "var(--surface-2)", color: "var(--dim)" }}>
               {ledgerAll.length === 0
-                ? "The ledger is empty because no sweep has kept a qualifying finding yet — that's an honest zero, not a missing section. The guarantee still holds: when a sweep does keep something, it will appear here with its verbatim listing link, scout, marketplace, ask and % of market, and it will stay here. Sightings from dated research (unlinked) live in the Sightings tab."
-                : "No findings match this segment + filters. Loosen a chip or switch tier tab — the counts on the tabs and chips show where the kept findings actually sit."}
+                ? "The ledger is empty because no sweep has kept a qualifying finding yet — that's an honest zero, not a missing section. When a sweep does keep something, it will appear here with its verbatim listing link, scout, marketplace, ask and % of market, and it will stay here. Sightings from dated research (unlinked) live under the Unverified segment."
+                : "No findings sit in this segment — the counts on the segments show where the kept findings actually sit."}
             </p>
-          )}
-
-          {/* Acquired via scouts — small permanent record */}
-          {ledgerBought.length > 0 && ledgerTier !== "acquired" && (
-            <div className="mt-5 rounded-2xl p-4" style={{ background: "rgba(63,182,143,0.08)", border: "1px solid rgba(63,182,143,0.35)" }}>
-              <p className="font-display font-bold text-sm">✓ Acquired via scouts <span className="font-normal" style={{ color: "var(--dim)" }}>— {ledgerBought.length} bought from scout findings</span></p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {ledgerBought.map(d => (
-                  <span key={d.id} className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid var(--hairline)" }}>
-                    {d.cardName} · <span className="num">{fmt(d.askingUsd)}</span> · {d.marketplace.split("—")[0]?.trim()}
-                    {d.listingUrl && <a href={d.listingUrl} target="_blank" rel="noreferrer" aria-label={`View bought listing for ${d.cardName} on ${d.marketplace}`} className="underline font-bold" style={{ color: "var(--accent-ink)" }}>listing ↗</a>}
-                  </span>
-                ))}
-              </div>
-            </div>
           )}
 
           {/* Expired — collapsed by default, kept for the record */}
           {ledgerGone.length > 0 && ledgerTier !== "expired" && (
-            <div className="mt-4 rounded-2xl" style={{ border: "1px dashed var(--border)", background: "var(--glass)" }}>
+            <div className="mt-4 rounded-2xl" style={{ border: "1px dashed var(--border)", background: "var(--surface-2)" }}>
               <button onClick={() => setLedgerShowExpired(v => !v)} aria-expanded={ledgerShowExpired} aria-label="Toggle expired findings section" className="w-full flex items-center justify-between px-4 py-3 text-left">
                 <span className="text-sm font-bold" style={{ color: "var(--dim)" }}>Expired / Gone — {ledgerGone.length} kept for the record, not actionable</span>
                 <span aria-hidden style={{ color: "var(--dim)" }}>{ledgerShowExpired ? "▾ Hide" : "▸ Show"}</span>
@@ -3414,7 +3927,14 @@ export function App() {
         <section id="v2-terminal" aria-label="Market Terminal — market value and live listings for every card" className="quiet-panel mt-8 p-5 sm:p-6 scroll-mt-24" style={vis(inGroup("deals", "market"))}>
           <p className="kicker" style={{ color: "var(--accent-ink)" }}>▦ Market Terminal</p>
           <h2 className="font-display text-2xl font-bold mt-1.5">Every card, priced against the live market</h2>
-          <p className="text-sm mt-1 max-w-3xl leading-relaxed" style={{ color: "var(--dim)" }}>The slab / market-value approach, applied to <strong style={{ color: "var(--text)" }}>everything</strong>: every watchlist target and every owned card gets (a) its market value — our verified comp, with source and sales volume where known, (b) the live listings the 2-hourly sweeps captured for that exact card/grade, each priced as <strong style={{ color: "var(--text)" }}>% of market value</strong>, and (c) a <strong style={{ color: "var(--text)" }}>deal flag at ≤80% of market</strong>, which also flags the finding in the Findings Ledger. Listings are captured at <strong style={{ color: "var(--text)" }}>every price</strong> — at, under and over market — like a terminal census: a listing whose page check was blocked still shows here, labelled <strong style={{ color: "var(--text)" }}>never positively verified live</strong> in its row; only <strong style={{ color: "var(--text)" }}>pinned deals</strong> require positive live verification, and a listing positively shown to have ended leaves the Terminal in the same sweep. For owned cards the same row is sell-side intel: your card&apos;s value vs the competing listings. Cards with an owner-kept (locked) value use it as their market value here, labelled owner-kept; every other card&apos;s market value is its latest verified comp. Cards with fewer than 3 sales in the last 30 days — or no verified volume on file — are labelled <strong style={{ color: "var(--text)" }}>thin comps</strong> wherever their value shows.</p>
+          {/* TERMINAL METHODOLOGY ESSAY REMOVED (owner, Oct 13): the
+            multi-paragraph "slab / market-value approach" prose block
+            goes entirely — no replacement essay, no footnote (same
+            precedent as the cut Home disclaimer box). The per-row
+            DATA LABELS it described all stay — "thin comps", "never
+            positively verified live", the ≤80% deal flags, the
+            value-source markers — those are labels on data, and the
+            rules are enforced by the system, not by the essay. */}
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <label className="text-xs font-semibold" style={{ color: "var(--dim)" }}>Search cards
@@ -3453,13 +3973,13 @@ export function App() {
               const ls = (listingsBySubject.get(t.subjectKey) ?? []).filter(l => (l.pctOfMarket == null || l.pctOfMarket <= termMaxPct) && (termShips === "All" || l.shipsFrom === termShips));
               const tScout = t.scoutId ? scoutById.get(t.scoutId) : undefined;
               return (
-                <article key={t.subjectKey} className="zebra-card rounded-2xl p-4" style={{ background: tIdx % 2 === 1 ? "var(--row-zebra)" : "var(--glass)", border: "1px solid var(--hairline)" }}>
+                <article key={t.subjectKey} className="zebra-card rounded-2xl p-4" style={{ background: tIdx % 2 === 1 ? "var(--row-zebra)" : "var(--surface-2)", border: "1px solid var(--hairline)" }}>
                   <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
                     <div className="flex-1 min-w-[220px]">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold leading-snug">{t.name}</p>
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "var(--surface-alt)", color: "var(--accent-ink)" }}>{t.gradeLabel}</span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ background: "var(--surface-alt)", color: t.subjectType === "owned" ? "var(--hold)" : "var(--ask-text)" }}>{t.subjectType === "owned" ? "Owned — sell-side intel" : `Watchlist · ${t.kind}`}</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ background: "var(--surface-alt)", color: t.subjectType === "owned" ? "var(--hold)" : "var(--ask-text)" }}>{t.subjectType === "owned" ? "Owned" : `Watchlist · ${t.kind}`}</span>
                         {t.thinComps && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ border: "1px dashed var(--trim)", color: "var(--trim)" }}>Thin comps</span>}
                         {t.subjectType === "owned" && <button onClick={() => openCardDetail(t.subjectKey.replace(/^owned-/, ""))} aria-label={`Open card detail page for ${t.name}`} className="text-[11px] font-bold px-2.5 py-1 rounded-full border" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)" }}>Open card detail →</button>}
                       </div>
@@ -3478,7 +3998,7 @@ export function App() {
                         <div key={l.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl px-3 py-2 text-sm" style={{ background: "rgba(0,0,0,0.25)", border: l.isDeal ? "1px solid rgba(63,182,143,0.6)" : "1px solid var(--hairline)" }}>
                           <span>Asking <strong className="num">{fmt(l.askingUsd)}</strong></span>
                           {l.pctOfMarket != null && <span className="num font-bold" style={{ color: l.isDeal ? "var(--hold)" : l.pctOfMarket <= 100 ? "var(--accent-ink)" : "var(--sell)" }}>{l.pctOfMarket.toFixed(0)}% of market{l.discountPct != null ? (l.discountPct >= 0 ? ` · ${l.discountPct.toFixed(0)}% under` : ` · ${Math.abs(l.discountPct).toFixed(0)}% over`) : ""}</span>}
-                          {l.isDeal && <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ background: "var(--hold)", color: "var(--ink-on-fill)" }}>⚑ Deal territory ≤80%</span>}
+                          {l.isDeal && <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ background: "var(--hold)", color: "var(--ink-on-fill)" }}>⚑ Deal ≤80%</span>}
                           <span style={{ color: "var(--dim)" }}>{l.marketplace}{l.seller ? ` · ${l.seller}` : ""}{l.shipsFrom ? ` · ships from ${l.shipsFrom}` : " · ships-from unknown"}</span>
                           <span className="text-[11px] font-semibold" style={{ color: "var(--hold)" }}>{fmtVerifiedLive(l.lastVerifiedLiveAt)}</span>
                           {l.listingUrl && <a href={l.listingUrl} target="_blank" rel="noreferrer" aria-label={`View listing for ${t.name} on ${l.marketplace}`} className="font-bold underline" style={{ color: "var(--accent-ink)" }}>View listing on {l.marketplace} ↗</a>}
@@ -3491,7 +4011,7 @@ export function App() {
                 </article>
               );
             })}
-            {terminalFiltered.length === 0 && <p className="text-sm rounded-xl px-4 py-3" style={{ background: "var(--glass)", color: "var(--dim)" }}>No cards match those terminal filters — loosen the % of market, price cap, or the low-volume toggle.</p>}
+            {terminalFiltered.length === 0 && <p className="text-sm rounded-xl px-4 py-3" style={{ background: "var(--surface-2)", color: "var(--dim)" }}>No cards match those terminal filters — loosen the % of market, price cap, or the low-volume toggle.</p>}
           </div>
         </section>
 
@@ -3542,7 +4062,7 @@ export function App() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--faint)" }}>Crystal and Gold Star led the Sep 27, 2026 tracker; LV.X moved +13.5% median over the same 30 days. Category medians, not any single card's return.</p>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--faint)" }}>Crystal and Gold Star led the Sep 27, 2026 tracker; LV.X — your Giratina's category — moved +13.5% median over the same 30 days. Category medians, not any single card's return.</p>
             </div>
           </div>
 
@@ -3608,7 +4128,7 @@ export function App() {
                     )}
                   </div>
                   <div>
-                    <p className="font-display font-bold">Backtest record <span className="text-[10px] font-sans font-black px-2 py-0.5 rounded-full align-middle" style={{ border: "1px solid var(--accent)", color: "var(--accent-ink)" }}>REPLAYED HISTORY — NEVER BLENDED WITH LIVE</span></p>
+                    <p className="font-display font-bold">Backtest record <span className="text-[10px] font-sans font-black px-2 py-0.5 rounded-full align-middle" style={{ border: "1px solid var(--accent)", color: "var(--accent-ink)" }}>REPLAYED HISTORY</span></p>
                     {tr.backtest.issued === 0 ? (
                       <p className="text-sm mt-1.5 leading-relaxed" style={{ color: "var(--dim)" }}>No backtest yet — it seeds on the first forecast pass, for cards with at least 6 dated verified sales, forecasting at past dates using only the sales known then.</p>
                     ) : (
@@ -3620,7 +4140,7 @@ export function App() {
                   </div>
                 </div>
                 {tr.live.superseded > 0 && (
-                  <p className="text-xs mt-3" style={{ color: "var(--faint)" }}>{tr.live.superseded} forecast{tr.live.superseded === 1 ? "" : "s"} superseded Oct 13, 2026 — basis corrected (owner-kept value filings were excluded from the forecast evidence base). Superseded forecasts count as neither hits nor misses and appear in no statistic above.</p>
+                  <p className="text-xs mt-3" style={{ color: "var(--faint)" }}>{tr.live.superseded} forecast{tr.live.superseded === 1 ? "" : "s"} superseded Oct 13, 2026 — basis corrected (non-comp filings were excluded from the forecast evidence base). Superseded forecasts count as neither hits nor misses and appear in no statistic above.</p>
                 )}
                 <p className="text-xs mt-4" style={{ color: "var(--faint)" }}>Every forecast is logged at issuance from verified sold comps only and graded at its horizon against the card&apos;s verified-comp value. Ranges from verified sales only — scenarios, not predictions.</p>
               </details>
@@ -3629,17 +4149,49 @@ export function App() {
         </section>
 
         {/* ——— WATCHLIST ——— */}
+        {/* ——— SELL — the Exit Desk, moved out of Deals › Market into
+            its own Vault sub-page (owner, Oct 13): Vault launcher is
+            Collection · Watch · Sell. The Market page keeps only the
+            bid/ask board. Behaviors unchanged — drafting only (the owner
+            lists and sells himself; no automated selling); drafts
+            generated here or from a card detail's Market signals land
+            in the same list. ——— */}
+        <section id="v2-sell" aria-label="Sell — Exit Desk listing drafts" className="mt-12 scroll-mt-24" style={vis(inGroup("vault", "sell"))}>
+          <div className="quiet-panel p-4 sm:p-6">
+            <p className="kicker" style={{ color: "var(--accent-ink)" }}>💸 Sell</p>
+            <h2 className="font-display text-2xl sm:text-3xl font-bold mt-1.5">Exit Desk — Sell / Trim cards</h2>
+            <p className="text-sm mt-1 max-w-3xl" style={{ color: "var(--dim)" }}>Generate a draft and it is built from the card's data + provenance with a comp-based, source-labeled price suggestion. Drafting only — the owner posts and sells himself. No automated selling.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {active.filter(c => c.advisorCall.includes("SELL") || c.advisorCall.includes("TRIM")).map(c => (
+              <button key={c.cert} onClick={() => exitDraftMut.mutate({ cert: c.cert })} aria-label={`Generate listing draft for ${c.name}`} className="touch-target rounded-full px-4 py-2.5 text-sm font-bold border" style={{ borderColor: "var(--accent)", color: "var(--accent-ink)" }}>✎ Draft listing — {c.name} ({fmt(c.effectiveUsd)})</button>
+            ))}
+          </div>
+          <div className="mt-4 grid gap-3 xl:grid-cols-2">
+            {(v2?.exits ?? []).map(d => <ExitDraftCard key={d.id} draft={d} onUpdate={(args) => exitUpdateMut.mutate(args)} onDelete={(args) => exitDeleteMut.mutate(args)} />)}
+          </div>
+          {(v2?.exits ?? []).length === 0 && <p className="mt-3 text-sm" style={{ color: "var(--dim)" }}>No drafts yet — generate one above when the time feels right.</p>}
+          </div>
+        </section>
+
         <section id="v2-watchlist" className="mt-12 scroll-mt-24" style={vis(inGroup("vault", "watch"))}>
           <div className="quiet-panel px-5 py-4">
             <p className="kicker" style={{ color: "var(--accent-ink)" }}>The hunt</p>
           <h2 className="font-display text-3xl font-bold mt-1.5">Acquisition watchlist</h2>
-          <p className="text-sm mt-1.5 max-w-3xl leading-relaxed" style={{ color: "var(--dim)" }}>Your rule: <strong style={{ color: "var(--text)" }}>never buy the top of the market.</strong> Lagging, second-tier and quiet-accumulation plays from the Oct 8, 2026 research — each price carries its own check date and source type, and each target has an assigned scout. Hit <strong style={{ color: "var(--text)" }}>Pass</strong> on anything you don&apos;t want and it leaves the page for good — refreshes never bring a passed suggestion back.</p>
+          <p className="text-sm mt-1.5 max-w-3xl leading-relaxed" style={{ color: "var(--dim)" }}>Your rule: <strong style={{ color: "var(--text)" }}>never buy the top of the market.</strong> Lagging, second-tier and quiet-accumulation plays — each item carries its recorded reference figure, its own check date and source type, and each target has an assigned scout. Hit <strong style={{ color: "var(--text)" }}>Pass</strong> on anything you don&apos;t want and it leaves the page for good — refreshes never bring a passed suggestion back.</p>
+          </div>
+          <div className="quiet-panel mt-5 px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="font-display text-xl font-bold">Manage targets</p>
+              <button onClick={() => setShowAddWatch(v => !v)} aria-expanded={showAddWatch} aria-label={showAddWatch ? "Close add a watch target form" : "Add a watch target"} className="touch-target rounded-full px-5 py-2.5 text-sm font-bold" style={{ background: "var(--accent)", color: "#1a0b36" }}>{showAddWatch ? "Close" : "＋ Add a target"}</button>
+            </div>
+            <p className="text-sm mt-1.5 leading-relaxed" style={{ color: "var(--dim)" }}>Add your own targets, edit a max-buy on any item below, or remove a target — removal takes it off the page and its scout stops hunting it.</p>
+            {showAddWatch && <AddWatchForm busy={addWatchMut.isPending} onSubmit={(args) => addWatchMut.mutate(args, { onSuccess: () => setShowAddWatch(false) })} />}
           </div>
           <div className="mt-5 grid gap-3 xl:grid-cols-2">
             {watchItems.map((w, i) => {
               const scout = w.scoutId ? scoutById.get(w.scoutId) : undefined;
               return (
-                <div key={w.id} className={`quiet-panel p-4${i % 2 === 1 ? " quiet-alt" : ""}`}>
+                <div key={w.id} id={`watch-item-${w.id}`} className={`quiet-panel p-4${i % 2 === 1 ? " quiet-alt" : ""}`} style={flashWatchId === w.id ? { boxShadow: "0 0 0 2px var(--accent)" } : undefined}>
                   <div className="flex items-start justify-between gap-3">
                     <p className="font-semibold leading-snug"><span className="num mr-1.5" style={{ color: "var(--accent-ink)" }}>{i + 1}.</span>{w.name}</p>
                     <select aria-label={`Status for ${w.name}`} value={w.status} onChange={e => updateWatch.mutate({ id: w.id, status: e.target.value })} className="shrink-0 rounded-full px-2 py-1 text-xs font-semibold" style={{ border: "1px solid var(--border)", background: "var(--surface-alt)", color: "var(--text)" }}>
@@ -3647,19 +4199,13 @@ export function App() {
                     </select>
 <button onClick={() => updateWatch.mutate({ id: w.id, status: "Pass" })} aria-label={`Pass on ${w.name} — remove from page`} className="shrink-0 rounded-full px-3 py-1 text-xs font-bold border" style={{ borderColor: "var(--sell)", color: "var(--sell)", background: "rgba(200,64,42,0.08)" }}>Pass ✕</button>
                   </div>
-                  <p className="mt-1.5 text-sm font-semibold" style={{ color: "var(--accent-ink)" }}>{w.priceContext}</p>
-                  <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--dim)" }}>{w.thesis}</p>
-                  <p className="mt-2 text-sm leading-relaxed"><strong>Rule:</strong> {w.actionRule}</p>
+                  {renderWatchFields(w)}
+                  <WatchAccrualLine points={watchPointsById.get(w.id) ?? []} maxBuyUsd={maxBuyOf(w)} />
+                  <WatchManageControls w={w} busy={updateWatch.isPending || removeWatchMut.isPending} onSaveMaxBuy={(id, mb) => updateWatch.mutate({ id, maxBuyUsd: mb })} onRemove={(id) => removeWatchMut.mutate({ id })} />
                   <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {scout && <span className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-2.5 py-1" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}><span aria-hidden>{scout.emoji}</span> Scout: {scout.name} · {scout.territory}</span>}
+                    {scout && <span className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-2.5 py-1" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}><span aria-hidden>{scout.emoji}</span> Scout: {scout.name} · {scout.territory}</span>}
                     {w.lastChecked && <span className="text-[11px]" style={{ color: "var(--faint)" }}>Price checked {w.lastChecked}{w.status !== "Watching" ? ` · Status: ${w.status}` : ""}</span>}
                   </div>
-                  {(() => { const link = watchSearchLink(w, scout); return (
-                    <p className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <a href={link.url} target="_blank" rel="noreferrer" aria-label={`${link.label} — ${w.name}`} className="text-xs font-bold underline" style={{ color: "var(--accent-ink)" }}>{link.label}</a>
-                      <span className="text-[11px]" style={{ color: "var(--faint)" }}>Live {link.marketplace} search page — current asks, not sold comps. Verify against comps before buying.</span>
-                    </p>
-                  ); })()}
                   {(() => { const link = watchSearchLink(w, scout); return (
                     <p className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                       <a href={link.url} target="_blank" rel="noreferrer" aria-label={`${link.label} — ${w.name}`} className="text-xs font-bold underline" style={{ color: "var(--accent-ink)" }}>{link.label}</a>
@@ -3682,7 +4228,7 @@ export function App() {
                 {vintageItems.map((w, i) => {
                   const scout = w.scoutId ? scoutById.get(w.scoutId) : undefined;
                   return (
-                    <div key={w.id} className={`quiet-panel p-4${i % 2 === 1 ? " quiet-alt" : ""}`}>
+                    <div key={w.id} id={`watch-item-${w.id}`} className={`quiet-panel p-4${i % 2 === 1 ? " quiet-alt" : ""}`} style={flashWatchId === w.id ? { boxShadow: "0 0 0 2px var(--accent)" } : undefined}>
                       <div className="flex items-start justify-between gap-3">
                         <p className="font-semibold leading-snug"><span className="num mr-1.5" style={{ color: "var(--accent-ink)" }}>{i + 1}.</span>{w.name}</p>
                         <select aria-label={`Status for ${w.name}`} value={w.status} onChange={e => updateWatch.mutate({ id: w.id, status: e.target.value })} className="shrink-0 rounded-full px-2 py-1 text-xs font-semibold" style={{ border: "1px solid var(--border)", background: "var(--surface-alt)", color: "var(--text)" }}>
@@ -3690,11 +4236,11 @@ export function App() {
                         </select>
 <button onClick={() => updateWatch.mutate({ id: w.id, status: "Pass" })} aria-label={`Pass on ${w.name} — remove from page`} className="shrink-0 rounded-full px-3 py-1 text-xs font-bold border" style={{ borderColor: "var(--sell)", color: "var(--sell)", background: "rgba(200,64,42,0.08)" }}>Pass ✕</button>
                       </div>
-                      <p className="mt-1.5 text-sm font-semibold" style={{ color: "var(--accent-ink)" }}>{w.priceContext}</p>
-                      <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--dim)" }}>{w.thesis}</p>
-                      <p className="mt-2 text-sm leading-relaxed"><strong>Rule:</strong> {w.actionRule}</p>
+                      {renderWatchFields(w)}
+                      <WatchAccrualLine points={watchPointsById.get(w.id) ?? []} maxBuyUsd={maxBuyOf(w)} />
+                      <WatchManageControls w={w} busy={updateWatch.isPending || removeWatchMut.isPending} onSaveMaxBuy={(id, mb) => updateWatch.mutate({ id, maxBuyUsd: mb })} onRemove={(id) => removeWatchMut.mutate({ id })} />
                       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-                        {scout && <span className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-2.5 py-1" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}><span aria-hidden>{scout.emoji}</span> Scout: {scout.name} · {scout.territory}</span>}
+                        {scout && <span className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-2.5 py-1" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}><span aria-hidden>{scout.emoji}</span> Scout: {scout.name} · {scout.territory}</span>}
                         {w.lastChecked && <span className="text-[11px]" style={{ color: "var(--faint)" }}>Price checked {w.lastChecked}{w.status !== "Watching" ? ` · Status: ${w.status}` : ""}</span>}
                       </div>
                     </div>
@@ -3709,7 +4255,7 @@ export function App() {
               <div className="quiet-panel px-5 py-4 mt-10">
                 <p className="kicker" style={{ color: "var(--accent-ink)" }}>Silver border · EX era · 2005–2008 decks</p>
                 <h3 className="font-display text-2xl font-bold mt-1">Silver-Border World Championship Decks (EX era)</h3>
-                <p className="text-sm mt-1.5 max-w-3xl leading-relaxed" style={{ color: "var(--dim)" }}>These are the World Championship deck reprints: <strong style={{ color: "var(--text)" }}>silver border, the champion&apos;s signature on the card, a special WC back — not tournament legal.</strong> PSA 10 copies are repricing hard — Mew Gold Star PSA 10 set a $1,800 record in 2024, then a <strong style={{ color: "var(--text)" }}>$20,400 Fanatics Collect record in 2026</strong>, with a 2026 sales ladder of $6,100 (Apr) rising to $24,400–$29,280 (Sep). But <strong style={{ color: "var(--text)" }}>raw copies still lag</strong> — so every target here is a near-mint <strong style={{ color: "var(--text)" }}>raw grading candidate</strong>, never a graded 10. Graded 10s are already the top of the market. Prices are TCGplayer-tracked WC deck values, checked Oct 8, 2026, and re-verified on every refresh. Hunted by <strong style={{ color: "var(--text)" }}>Pikachu</strong> (TCGplayer / raw) and <strong style={{ color: "var(--text)" }}>Gengar</strong> (eBay).</p>
+                <p className="text-sm mt-1.5 max-w-3xl leading-relaxed" style={{ color: "var(--dim)" }}>World Championship deck reprints: <strong style={{ color: "var(--text)" }}>silver border, the champion&apos;s signature on the card, a special WC back — not tournament legal.</strong> Every target here is a near-mint <strong style={{ color: "var(--text)" }}>raw grading candidate</strong>, never a graded 10 — graded 10s are already the top of the market. Prices are TCGplayer-tracked WC deck values, re-verified on every refresh. Hunted by <strong style={{ color: "var(--text)" }}>Pikachu</strong> (TCGplayer / raw) and <strong style={{ color: "var(--text)" }}>Gengar</strong> (eBay).</p>
               </div>
               <div className="mt-4 rounded-2xl p-4 border-2 border-dashed" style={{ borderColor: "var(--sell)", background: "rgba(200,64,42,0.07)" }} role="note" aria-label="Silver-border WC category warning">
                 <p className="text-sm leading-relaxed"><strong style={{ color: "var(--sell)" }}>⚠ Thin-market warning:</strong> WC deck cards were bulk for two decades and liquidity is thin — and one anomalous <strong>$50,100 Jul 2026 PSA 10 print</strong> sits amid $11k–$15k sales for the same tier. That print is an outlier, not a comp. Buy <strong>only on multiple confirmed paid sales</strong>, top species only, and verify silver border, signature and WC back on every copy.</p>
@@ -3725,7 +4271,7 @@ export function App() {
               <div className="quiet-panel px-5 py-4 mt-10">
                 <p className="kicker" style={{ color: "var(--accent-ink)" }}>Japan only · 1998–99 · Eevee&apos;s standing hunt</p>
                 <h3 className="font-display text-2xl font-bold mt-1">Japanese Vending Series (1998–99)</h3>
-                <p className="text-sm mt-1.5 max-w-3xl leading-relaxed" style={{ color: "var(--dim)" }}>The 1998–1999 Japanese vending / expansion sheet series (Series 1–3): glossy cards peeled by hand from vending-machine sheets. <strong style={{ color: "var(--text)" }}>Eevee</strong> has a standing hunt across <strong style={{ color: "var(--text)" }}>Yahoo Japan, Mercari and eBay JP sellers</strong> for unpeeled sheets and clean singles of the notable cards. This is a thin Japanese-market niche where <strong style={{ color: "var(--text)" }}>condition drives value</strong> — peel marks, curl and gloss wear are the difference between grades — so comps must come from <strong style={{ color: "var(--text)" }}>Japanese sources, labelled as such</strong>. No prices have been invented for this group: every target reads <strong style={{ color: "var(--text)" }}>“Price research on first refresh”</strong>, and the first refresh / sweep cycle establishes real comps from confirmed Japanese sales before any max-buy is shown.</p>
+                <p className="text-sm mt-1.5 max-w-3xl leading-relaxed" style={{ color: "var(--dim)" }}>The 1998–1999 Japanese vending / expansion sheet series (Series 1–3): glossy cards peeled by hand from vending-machine sheets. <strong style={{ color: "var(--text)" }}>Eevee</strong> has a standing hunt across <strong style={{ color: "var(--text)" }}>Yahoo Japan, Mercari and eBay JP sellers</strong> for unpeeled sheets and clean singles of the notable cards. This is a thin Japanese-market niche where <strong style={{ color: "var(--text)" }}>condition drives value</strong> — peel marks, curl and gloss wear are the difference between grades — so comps must come from <strong style={{ color: "var(--text)" }}>Japanese sources, labelled as such</strong>. No max-buy is shown for a target until a confirmed Japanese sold comp exists for it.</p>
               </div>
               <div className="mt-4 grid gap-3 xl:grid-cols-2">
                 {vendingItems.map((w, i) => renderHuntCard(w, i))}
@@ -3734,11 +4280,9 @@ export function App() {
           )}
 
           {warningItems.map(w => (
-            <div key={w.id} className="mt-5 rounded-2xl p-4 sm:p-5" style={{ background: "var(--red)", color: "#fff" }}>
+            <div key={w.id} id={`watch-item-${w.id}`} className="mt-5 rounded-2xl p-4 sm:p-5" style={{ background: "var(--red)", color: "#fff", ...(flashWatchId === w.id ? { boxShadow: "0 0 0 2px var(--accent)" } : {}) }}>
               <h3 className="font-display text-xl font-bold">{w.name}</h3>
-              <p className="mt-1.5 text-sm font-semibold">{w.priceContext}</p>
-              <p className="mt-1 text-sm leading-relaxed opacity-90">{w.thesis}</p>
-              <p className="mt-2 text-sm leading-relaxed"><strong>Rule:</strong> {w.actionRule}</p>
+              {renderWatchFields(w, "light")}
             </div>
           ))}
 
@@ -3746,10 +4290,11 @@ export function App() {
             <h3 className="font-display text-xl font-bold" style={{ color: "var(--sell)" }}>⛔ Do not buy — these ARE the top</h3>
             <div className="mt-3 space-y-3">
               {avoidItems.map(w => (
-                <div key={w.id} className="pt-3 first:pt-0" style={{ borderTop: "1px solid var(--hairline)" }}>
+                <div key={w.id} id={`watch-item-${w.id}`} className="pt-3 first:pt-0" style={{ borderTop: "1px solid var(--hairline)", ...(flashWatchId === w.id ? { boxShadow: "0 0 0 2px var(--accent)" } : {}) }}>
                   <p className="font-semibold">{w.name}</p>
-                  <p className="text-sm font-semibold mt-0.5" style={{ color: "var(--sell)" }}>{w.priceContext}</p>
-                  <p className="text-sm leading-relaxed mt-0.5" style={{ color: "var(--dim)" }}>{w.thesis} <strong style={{ color: "var(--text)" }}>{w.actionRule}</strong></p>
+                  {renderWatchFields(w)}
+                  <WatchAccrualLine points={watchPointsById.get(w.id) ?? []} maxBuyUsd={maxBuyOf(w)} />
+                  <WatchManageControls w={w} busy={updateWatch.isPending || removeWatchMut.isPending} onSaveMaxBuy={(id, mb) => updateWatch.mutate({ id, maxBuyUsd: mb })} onRemove={(id) => removeWatchMut.mutate({ id })} />
                   {(() => { const link = watchSearchLink(w); return <p className="mt-1.5"><a href={link.url} target="_blank" rel="noreferrer" aria-label={`See current eBay asks for ${w.name}`} className="text-xs font-bold underline" style={{ color: "var(--dim)" }}>See current asks on eBay ↗</a> <span className="text-[11px]" style={{ color: "var(--faint)" }}>— live search, to confirm it&apos;s still the top. Not a buy link.</span></p>; })()}
                 </div>
               ))}
@@ -3758,13 +4303,15 @@ export function App() {
         </section>
 
         {/* ——— PROJECTIONS ——— */}
+        {/* In-box header REMOVED (owner, Oct 14): the SCENARIOS
+            kicker, the "Projections — scenarios, not predictions"
+            title and its explainer paragraph came out — the box
+            starts directly with the three scenario cards (cards,
+            numbers and %s unchanged; no replacement text). */}
         <section className="mt-12" style={vis(inGroup("vault", "collection"))}>
-          <div className="quiet-panel px-5 py-4">
-            <p className="kicker" style={{ color: "var(--accent-ink)" }}>Scenarios</p>
-          <h2 className="font-display text-3xl font-bold mt-1.5">Projections — scenarios, not predictions</h2>
-          <p className="text-sm mt-1.5 max-w-3xl" style={{ color: "var(--dim)" }}>Ranges built from the ${base.toLocaleString()} official base. Pokemon prices move on sold listings, pop growth and hype cycles — treat these as planning scenarios.</p>
-          </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
+          {/* DESKTOP: three scenario cards side by side (owner,
+              Oct 13). MOBILE: one comparison grid (below). */}
+          <div className="hidden md:grid gap-3 md:grid-cols-3">
             {scenarios.map(s => (
               <div key={s.label} className="quiet-panel p-4">
                 <p className="font-display font-bold">{s.label}</p>
@@ -3777,28 +4324,64 @@ export function App() {
               </div>
             ))}
           </div>
-          <div className="mt-3 quiet-panel p-4">
-            <p className="kicker" style={{ color: "var(--faint)" }}>24-month scenario spread</p>
-            <div className="mt-3 space-y-2">
-              {scenarios.map(s => { const v = base * (s.rows[2]?.mult ?? 1); const w = Math.min(100, (v / (base * 1.6)) * 100); return (
-                <div key={s.label} className="flex items-center gap-3 text-sm"><span className="w-28 shrink-0">{s.label}</span><div className="flex-1 h-3 rounded-full overflow-hidden" style={{ background: "var(--surface-alt)" }}><div className="h-full rounded-full" style={{ width: w + "%", background: "var(--accent)" }} /></div><span className="font-semibold num w-20 text-right">{fmt(Math.round(v))}</span></div>
-              ); })}
+          {/* MOBILE COMPARISON GRID (owner, Oct 13): horizons run
+              down the left as quiet row headers, scenarios across
+              the top; each cell is the value with its signed % beneath
+              in the dimmer tone; hairlines throughout. The scenario
+              descriptions live in a compact legend beneath — no
+              information lost, no horizontal overflow at 390px. */}
+          <div className="md:hidden quiet-panel p-4" role="group" aria-label="Scenario comparison — value by horizon for Conservative, Base and Bullish">
+            <div className="grid" style={{ gridTemplateColumns: "44px repeat(3, minmax(0, 1fr))" }}>
+              <span aria-hidden="true" />
+              {scenarios.map(s => (
+                <span key={s.label} className="pb-2 text-center font-display text-[13px] font-bold">{s.label}</span>
+              ))}
+              {(scenarios[0]?.rows ?? []).map((r, ri) => (
+                <Fragment key={r.h}>
+                  <span key={`h-${r.h}`} className="flex items-center text-xs font-semibold py-2.5" style={{ color: "var(--faint)", borderTop: "1px solid var(--hairline)" }}>{r.h.replace(" months", " mo").replace(" month", " mo")}</span>
+                  {scenarios.map(s => { const row = s.rows[ri]; return row ? (
+                    <span key={`${s.label}-${r.h}`} className="py-2.5 text-center" style={{ borderTop: "1px solid var(--hairline)" }}>
+                      <span className="num block text-sm font-bold">{fmt(Math.round(base * row.mult))}</span>
+                      <span className="block text-[11px]" style={{ color: "var(--dim)" }}>({row.mult >= 1 ? "+" : ""}{Math.round((row.mult - 1) * 100)}%)</span>
+                    </span>
+                  ) : <span key={`${s.label}-${r.h}`} style={{ borderTop: "1px solid var(--hairline)" }} />; })}
+                </Fragment>
+              ))}
+            </div>
+            <div className="mt-3 grid gap-1" style={{ borderTop: "1px solid var(--hairline)", paddingTop: "10px" }}>
+              {scenarios.map(s => (
+                <p key={s.label} className="text-xs leading-snug" style={{ color: "var(--dim)" }}><strong style={{ color: "var(--text)" }}>{s.label}</strong> — {s.desc}</p>
+              ))}
             </div>
           </div>
+          {/* The 24-MONTH SCENARIO SPREAD panel that sat here is
+              REMOVED (owner, Oct 13): its three values repeated the
+              third row of each scenario card above. The cards keep
+              their 6/12/24-month rows; no data changed. */}
         </section>
 
         {/* ——— COLLECTION ——— */}
         <section id="v2-collection" className="mt-12 scroll-mt-24" style={vis(inGroup("vault", "collection"))}>
-          <div className="quiet-panel px-5 py-4 inline-block">
-            <p className="kicker" style={{ color: "var(--accent-ink)" }}>The vault</p>
-          <h2 className="font-display text-3xl font-bold mt-1.5">Full collection — {filtered.length} shown</h2>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <input aria-label="Search cards" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, set, cert…" className="flex-1 min-w-[180px] rounded-full px-4 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }} />
-            <select aria-label="Filter by grader" value={graderFilter} onChange={e => setGraderFilter(e.target.value)} className="rounded-full px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}><option>All</option><option>PSA</option><option>CGC</option></select>
-            <select aria-label="Filter by era" value={eraFilter} onChange={e => setEraFilter(e.target.value)} className="rounded-full px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}><option>All</option><option>Vintage</option><option>Modern</option></select>
-            <select aria-label="Filter by advisor call" value={callFilter} onChange={e => setCallFilter(e.target.value)} className="rounded-full px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}><option>All</option><option>HOLD</option><option>SELL</option><option>TRIM</option></select>
-            <select aria-label="Sort cards" value={sortKey} onChange={e => setSortKey(e.target.value as "value" | "year" | "grade" | "name")} className="rounded-full px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}><option value="value">Sort: Value ↓</option><option value="year">Sort: Year ↓</option><option value="grade">Sort: Grade ↓</option><option value="name">Sort: Name A–Z</option></select>
+          {/* In-box header REMOVED (owner, Oct 14): THE VAULT kicker
+              + "Full collection — N shown" title came out — the box
+              starts directly with the collection content (filter bar
+              + rows, unchanged; no replacement text). */}
+          
+          {/* Filter bar (owner, Oct 13): SEARCH ON ITS OWN LINE
+              (full width, alone); the filter selects + Sort on the
+              row beneath. EVERY control names its dimension in the
+              Sort control's format — "Grader: All", "Era: All",
+              "Call: All" — the dimension label is part of every
+              option's text so it never disappears; option VALUES
+              are unchanged, so behavior/defaults are identical. */}
+          <div>
+            <input aria-label="Search cards" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, set, cert…" className="w-full rounded-full px-4 py-2 text-sm outline-none" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }} />
+            <div className="mt-2 flex flex-wrap gap-2">
+              <select aria-label="Filter by grader" value={graderFilter} onChange={e => setGraderFilter(e.target.value)} className="rounded-full px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}><option value="All">Grader: All</option><option value="PSA">Grader: PSA</option><option value="CGC">Grader: CGC</option></select>
+              <select aria-label="Filter by era" value={eraFilter} onChange={e => setEraFilter(e.target.value)} className="rounded-full px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}><option value="All">Era: All</option><option value="Vintage">Era: Vintage</option><option value="Modern">Era: Modern</option></select>
+              <select aria-label="Filter by advisor call" value={callFilter} onChange={e => setCallFilter(e.target.value)} className="rounded-full px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}><option value="All">Call: All</option><option value="HOLD">Call: HOLD</option><option value="SELL">Call: SELL</option><option value="TRIM">Call: TRIM</option></select>
+              <select aria-label="Sort cards" value={sortKey} onChange={e => setSortKey(e.target.value as "value" | "year" | "grade" | "name")} className="rounded-full px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)" }}><option value="value">Sort: Value ↓</option><option value="year">Sort: Year ↓</option><option value="grade">Sort: Grade ↓</option><option value="name">Sort: Name A–Z</option></select>
+            </div>
           </div>
 
           <div className="mt-3 quiet-panel overflow-hidden">
@@ -3806,13 +4389,29 @@ export function App() {
               <button key={c.cert} onClick={() => openCardDetail(c.cert)} aria-label={`Open detail page for ${c.name} — ${c.grader} ${c.grade}, cert ${c.cert}`} className="zebra-row w-full text-left px-4 py-3 flex items-center gap-3 slab-hover" style={{ borderTop: idx === 0 ? "none" : "1px solid var(--hairline)", background: idx % 2 === 1 ? "var(--row-zebra)" : "transparent" }}>
                 {c.imageUrl && <img src={c.imageUrl} alt="" loading="lazy" onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} className="shrink-0 rounded" style={{ width: 30, height: 41, objectFit: "cover", border: "1px solid var(--hairline)" }} />}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold truncate">{c.name} <span className="font-normal" style={{ color: "var(--dim)" }}>#{c.number}</span>
-                    {(salesByCert.get(c.cert) ?? []).some(s => !s.verified) && <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "var(--red)", color: "var(--ink-on-fill)" }}>UNVERIFIED SIGNAL</span>}
+                  {/* Annotation pills REMOVED (owner, Oct 14): the
+                      annotation chips (unverified-print / auction /
+                      thesis markers) that used to sit beside a card's
+                      name are history annotations, not page chrome. The
+                      data is untouched — the unverified print stays
+                      excluded by the
+                      evidence rules, the closed auction stays on
+                      record, the thesis stays in the card's notes. */}
+                  <p className="font-semibold flex items-center gap-1.5 min-w-0"><span className="truncate">{c.name} <span className="font-normal" style={{ color: "var(--dim)" }}>#{c.number}</span></span>
                   </p>
                   <p className="text-xs truncate" style={{ color: "var(--dim)" }}>{c.year} · {c.setName} · Cert {c.cert}</p>
                 </div>
-                <span className="hidden sm:block text-[11px] font-bold px-2 py-1 rounded-full" style={{ background: "var(--surface-alt)" }}>{c.grader} {c.grade}</span>
-                <span title={c.advisorCall} className="shrink-0 max-w-[128px] sm:max-w-[180px] truncate text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: callColor(c.advisorCall), color: "var(--ink-on-fill)" }}>{c.advisorCall}</span>
+                {/* Right cluster (owner, Oct 14 — alignment fix): a
+                    strict two-column grid — grade chip in a FIXED
+                    116px column, call pill at the ONE fixed 104px
+                    width, both vertically centered on the row axis,
+                    so the columns run ruler-straight down the list
+                    (previously the chip's auto width shifted the pill
+                    column row to row). */}
+                <span className="flex items-center gap-2 shrink-0">
+                  <span className="hidden sm:flex items-center justify-center whitespace-nowrap text-[11px] font-bold px-2 py-1 rounded-full" style={{ background: "var(--surface-alt)", width: 116 }}>{c.grader} {c.grade}</span>
+                  <span title={c.advisorCall} className="shrink-0 whitespace-nowrap text-center text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: callColor(c.advisorCall), color: "var(--ink-on-fill)", width: 104 }}>{pillCall(c.advisorCall)}</span>
+                </span>
                 <span className="hidden md:flex items-center gap-2 shrink-0"><Sparkline values={(salesByCert.get(c.cert) ?? []).filter(s => s.verified).map(s => s.price)} width={52} height={16} /><DeltaChip value={cardChange30(c.cert)} /></span>
                 <span className="num font-bold w-20 text-right">{fmt(c.effectiveUsd)}</span>
               </button>
@@ -3828,7 +4427,7 @@ export function App() {
             <h2 className="font-display text-3xl font-bold mt-1.5">Sources & data quality</h2>
           </div>
           <div className="mt-4 quiet-panel p-4" style={{ borderColor: "rgba(217,164,65,0.4)" }}>
-            <p className="text-sm leading-relaxed"><strong>The rule:</strong> every price on this desk shows its source type — <strong>verified sold comp</strong>, <strong>active listing / ask</strong>, <strong>aggregator value</strong>, <strong>cert verification</strong>, or <strong>seller-reported / unverified</strong>. Aggregator or single-source prints never override verified sold comps or owner-kept values.</p>
+            <p className="text-sm leading-relaxed"><strong>The rule:</strong><br />every price on this desk shows its source type — <strong>verified sold comp</strong>, <strong>active listing / ask</strong>, <strong>aggregator value</strong>, <strong>cert verification</strong>, or <strong>seller-reported / unverified</strong>. Aggregator or single-source prints never override verified sold comps. No value is locked — every official value is comp-based and floats to verified comps (the owner-kept lock system was removed Oct 14, 2026).</p>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {data.sources.map(s => {
@@ -3839,7 +4438,7 @@ export function App() {
                 <article key={s.id} className="quiet-panel p-4" style={caution ? { borderColor: "rgba(224,90,58,0.5)", ...(notServed ? { opacity: 0.75 } : {}) } : undefined}>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-semibold">{s.name}</p>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide" style={{ color: c, border: `1px solid ${c}` }}>{notServed ? "not served — links broken (removed Oct 9, 2026)" : s.sourceType}</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide" style={{ color: c, border: `1px solid ${c}` }}>{notServed ? "Not served" : s.sourceType}</span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide" style={{ background: "var(--surface-alt)", color: "var(--dim)" }}>{s.trustLevel}</span>
                   </div>
                   <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--dim)" }}>{s.coverage}</p>
@@ -3855,41 +4454,23 @@ export function App() {
           </div>
 
           <div className="mt-4 quiet-panel p-5">
-            <h3 className="font-display text-xl font-bold">Verify next refresh</h3>
-            <div className="mt-3 grid gap-4 lg:grid-cols-2 text-sm leading-relaxed">
-              <div>
-                {(() => {
-                  const unpriced = (data?.cards ?? []).filter(c => c.status === "active" && c.effectiveUsd == null);
-                  return (<>
-                    <p className="font-bold">{unpriced.length} card{unpriced.length === 1 ? "" : "s"} with no price yet</p>
-                    {unpriced.length > 0 ? (
-                      <ul className="mt-1.5 space-y-1 list-disc pl-5" style={{ color: "var(--dim)" }}>
-                        {unpriced.map(c => <li key={c.cert}>{c.name} — {c.setName} #{c.number}, {c.grader} {c.grade} (cert {c.cert})</li>)}
-                      </ul>
-                    ) : <p className="mt-1.5" style={{ color: "var(--dim)" }}>Every active card is priced.</p>}
-                    <p className="mt-2" style={{ color: "var(--dim)" }}>Unpriced cards are excluded from the portfolio total until a checked value lands.</p>
-                  </>);
-                })()}
-              </div>
-              <div>
-                <p className="font-bold">Unverified estimates &amp; signals on file</p>
-                <ul className="mt-1.5 space-y-1 list-disc pl-5" style={{ color: "var(--dim)" }}>
-                  {(data?.cards ?? []).filter(c => c.status === "active" && c.checkedUsd == null && c.vaultUsd != null).map(c => (
-                    <li key={c.cert}>{c.name} #{c.number} {c.grader} {c.grade} — {fmt(c.vaultUsd)} vault estimate (cert {c.cert})</li>
-                  ))}
-                  {(data?.sales ?? []).filter(s => !s.verified).map(s => (
-                    <li key={s.id}><span style={{ color: "var(--sell)" }}><strong>UNVERIFIED:</strong> {((data?.cards ?? []).find(x => x.cert === s.cardCert)?.name ?? s.cardCert)} sale reported at {fmt(s.price)} ({s.saleDate}, {s.source}) — signal only, excluded from comps and totals.</span></li>
-                  ))}
-                </ul>
-                <p className="mt-2" style={{ color: "var(--dim)" }}>Owner-kept prices are official by the owner&apos;s confirmation and are not in this verify list — only their sales context updates.</p>
-              </div>
-            </div>
+            {/* "Verify next refresh" panel REMOVED (owner, Oct 13): a
+              fossil to-do list from the first build — its tasks all
+              completed days ago (the five CGC cards were priced
+              Oct 10, the Mewtwo/Dragonite/Abra estimates superseded
+              by checked comps, the Fanatics sibling comp captured
+              Oct 11 into sales_evidence) yet it still rendered
+              claims about a portfolio total that no longer exists.
+              Underlying records stay where they live (sales_evidence,
+              incl. unverified print rows). The Change log
+              below stays — it is the live refresh history, not part
+              of the removed panel's content. */}
             {/* Change log — collapsible, SAME pattern as the Sweep log:
                 ALWAYS collapsed on load (the owner, Oct 9 — no localStorage
                 memory for this log), header shows the latest change's
                 headline. Expanding lists every refresh/change entry on
                 file (newest first). */}
-            <div className="mt-4 rounded-2xl px-4 py-2" style={{ background: "var(--glass)", border: "1px solid var(--hairline)" }}>
+            <div className="mt-4 rounded-2xl px-4 py-2" style={{ background: "var(--surface-2)", border: "1px solid var(--hairline)" }}>
               <button onClick={() => setChangeLogOpen(v => !v)} aria-expanded={changeLogOpen} aria-label={changeLogOpen ? "Collapse change log" : "Expand change log"} className="w-full flex items-center gap-3 text-left py-2.5 min-h-[48px]">
                 <span className="font-display font-bold shrink-0">📝 Change log</span>
                 <span className="flex-1 min-w-0 truncate text-xs" style={{ color: "var(--dim)" }}>
@@ -3944,6 +4525,24 @@ export function App() {
             its substance lives in Sources & Data Quality above and in
             the per-number source labels — it is not repeated on Home. */}
         </div>
+        {/* ——— FRESHNESS LINE — the update-status line (same
+               stored-log facts: last daily refresh, latest logged
+               update, last/next scout sweep). Owner (Oct 13): it is
+               the Home page's FOOTER line — the last content element
+               on the page, resting at the foot just above the town
+               vista. Home only; quiet tertiary footnote. ——— */}
+        <p className="mt-6 px-1 text-[11px] leading-relaxed" style={{ color: "var(--faint)", ...vis(inGroup("home")) }} role="note" aria-label="Update status — last daily price refresh and last scout sweep">
+          ↻ Last daily refresh {updateHealth.dailyLog ? <strong style={{ color: "var(--dim)" }}>{new Date(updateHealth.dailyLog.ranAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</strong> : "not logged yet"}{updateHealth.dailyFailed ? <strong style={{ color: "var(--sell)" }}> — research dispatch FAILED, values unchanged (see Change log)</strong> : ""} · latest logged update {updateHealth.lastLog ? <strong style={{ color: "var(--dim)" }}>{new Date(updateHealth.lastLog.ranAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</strong> : "—"} · last sweep {updateHealth.lastSweepAt ? <strong style={{ color: "var(--dim)" }}>{new Date(updateHealth.lastSweepAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</strong> : "—"}, next ~{nextSweepLabel}
+        </p>
+
+        {/* ——— BOTTOM REVEAL (Oct 13) — the open town vista at the
+               foot of the page: a content-free stretch where the
+               backdrop town shows crisp and full (sky, buildings,
+               ground) and the scouts stand/roam on its ground
+               plane. Present on every data surface for consistency;
+               the Town page itself is already all town, so it gets
+               no reveal spacer. ——— */}
+        {!(!showOpen && !detailPageOpen && navGroup === "scouts" && activeSub === "town") && <div className="town-reveal" aria-hidden="true" />}
         <div className="mobile-tab-spacer" aria-hidden />
       </main>
       {/* ——— SHOW MODE — MOBILE ONLY floating camera button (Oct 9
@@ -3957,18 +4556,23 @@ export function App() {
              names the action. Hidden on desktop via CSS. ——— */}
       <button onClick={openShowMode} aria-current={showOpen ? "page" : undefined} aria-label="Open Show Mode — scan a slab with your camera" className="show-mode-fab" style={showOpen ? { borderColor: "var(--text)" } : undefined}>
         <span aria-hidden className="show-mode-fab-dot" />
-        <span aria-hidden className="text-[26px] leading-none">📷</span>
+        {/* Line-glyph camera (HIG pass, Oct 13, 2026): drawn in the
+            same GlyphSvg family/weight as the nav icons (stroke
+            1.7, round caps, currentColor) — the clip-art 📷 emoji
+            is gone; the green live dot above stays. */}
+        <GlyphSvg paths={["M4 8.2h2.9l1.9-2.7h6.4l1.9 2.7H20a1 1 0 0 1 1 1v9.3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.2a1 1 0 0 1 1-1Z", "M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"]} size={27} />
       </button>
       {/* GLASS VAULT mobile chrome: the footer is a DETACHED floating
           glass capsule (five equal-width slots, the selected pill is a
           hot-pink fill with midnight ink), floating over the town
-          band's top edge on Home. A tiny scout sprite perches on the
-          capsule's top edge — personality living on the chrome. The
-          Show Mode camera FAB above is the capsule's glass sibling:
-          same vapor-glass material, diameter ≈ capsule height,
-          floating separately beside it, never covering content. */}
+          band's top edge on Home. The capsule carries NO sprite: the
+          perched Gengar that used to sit on its top edge was removed
+          with the rest of the mobile scout chrome (owner, Oct 13,
+          2026 — "Let's remove scouts in mobile"). The Show Mode
+          camera FAB above is the capsule's glass sibling: same
+          vapor-glass material, diameter ≈ capsule height, floating
+          separately beside it, never covering content. */}
       <nav className="mobile-tab-bar" aria-label="Mobile navigation — Home, Deals, Vault, Scouts, Insights">
-        <span className="nav-scout-perch" aria-hidden="true"><PixelSprite scoutId="gengar" size={24} /></span>
         <div className="grid grid-cols-5">
           {([
             { id: "home", label: "Home" },
