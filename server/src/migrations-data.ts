@@ -75,5 +75,13 @@ export const MIGRATIONS: EmbeddedMigration[] = [
   {
     "name": "0017_add_card_image_url.sql",
     "sql": "ALTER TABLE `cards` ADD COLUMN `image_url` text;\n"
+  },
+  {
+    "name": "0018_watch_price_points.sql",
+    "sql": "CREATE TABLE `watch_price_points` (\n\t`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,\n\t`watch_id` integer NOT NULL,\n\t`price_usd` real NOT NULL,\n\t`source_type` text DEFAULT '' NOT NULL,\n\t`recorded_on` text NOT NULL\n);\n"
+  },
+  {
+    "name": "0019_owner_management_watch_scout_config.sql",
+    "sql": "ALTER TABLE `watchlist` ADD COLUMN `set_name` text DEFAULT '' NOT NULL;\n--> statement-breakpoint\nALTER TABLE `watchlist` ADD COLUMN `card_number` text DEFAULT '' NOT NULL;\n--> statement-breakpoint\nALTER TABLE `watchlist` ADD COLUMN `intent` text DEFAULT '' NOT NULL;\n--> statement-breakpoint\nALTER TABLE `watchlist` ADD COLUMN `grade_label` text DEFAULT '' NOT NULL;\n--> statement-breakpoint\nALTER TABLE `watchlist` ADD COLUMN `max_buy_usd` real;\n--> statement-breakpoint\nCREATE TABLE `scout_configs` (\n\t`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,\n\t`scout_id` text NOT NULL,\n\t`is_active` integer DEFAULT 1 NOT NULL,\n\t`focus_groups` text DEFAULT '' NOT NULL,\n\t`ceiling_usd` real,\n\t`tier1_discount_pct` real,\n\t`marketplaces` text DEFAULT '' NOT NULL\n);\n--> statement-breakpoint\nCREATE UNIQUE INDEX `scout_configs_scout_id_unique` ON `scout_configs` (`scout_id`);\n"
   }
 ];

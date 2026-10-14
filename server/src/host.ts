@@ -169,6 +169,8 @@ const EXPECTED_TABLES = [
   "lineage_events",
   "committee_records",
   "refresh_logs",
+  "watch_price_points",
+  "scout_configs",
 ];
 
 const BOOKKEEPING_TABLE = "__vault_embedded_migrations";

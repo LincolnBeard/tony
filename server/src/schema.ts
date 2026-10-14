@@ -59,6 +59,41 @@ export const watchlist = sqliteTable("watchlist", {
   status: text("status").notNull().default("Watching"),
   sortOrder: integer("sort_order").notNull().default(0),
   scoutId: text("scout_id"),
+  /* Owner management (Oct 14, 2026 — spec Q/R): structured fields for
+     owner-added/edited items. Legacy seeded rows leave these blank —
+     their facts live in name/priceContext as before. */
+  setName: text("set_name").notNull().default(""),
+  cardNumber: text("card_number").notNull().default(""),
+  intent: text("intent").notNull().default(""),
+  gradeLabel: text("grade_label").notNull().default(""),
+  maxBuyUsd: real("max_buy_usd"),
+});
+
+/* Scout configuration (Oct 14, 2026 — spec R.3): owner-saved setup for
+   the five existing scouts. No row = defaults (active, all groups, no
+   ceiling, default marketplaces) so nothing changes until the owner
+   changes it. focusGroups is a comma-joined list of target-group keys
+   (see targetGroupFor); empty = all groups. */
+export const scoutConfigs = sqliteTable("scout_configs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  scoutId: text("scout_id").notNull().unique(),
+  isActive: integer("is_active").notNull().default(1),
+  focusGroups: text("focus_groups").notNull().default(""),
+  ceilingUsd: real("ceiling_usd"),
+  tier1DiscountPct: real("tier1_discount_pct"),
+  marketplaces: text("marketplaces").notNull().default(""),
+});
+
+/* Dated reference-price points per watchlist item (Oct 14, 2026): the
+   Oct 8, 2026 seed figure plus one point per re-check that produced a
+   defensible single figure. The Growth heatmap colours watchlist tiles
+   from the change between the first and latest points. */
+export const watchPricePoints = sqliteTable("watch_price_points", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  watchId: integer("watch_id").notNull(),
+  priceUsd: real("price_usd").notNull(),
+  sourceType: text("source_type").notNull().default(""),
+  recordedOn: text("recorded_on").notNull(),
 });
 
 export const portfolioSnapshots = sqliteTable("portfolio_snapshots", {

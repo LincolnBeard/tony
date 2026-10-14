@@ -120,6 +120,20 @@
       "when": 1792020000000,
       "tag": "0017_add_card_image_url",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1792030000000,
+      "tag": "0018_watch_price_points",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1792040000000,
+      "tag": "0019_owner_management_watch_scout_config",
+      "breakpoints": true
     }
   ]
 }

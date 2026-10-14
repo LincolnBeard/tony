@@ -17,33 +17,51 @@
 }
 
 /* ——— VAPOR VAULT — tech / vaporwave / Pokémon ———
-   Two vapor themes over one token system. NIGHT VAPOR (dark, the :root
-   default): deep midnight-violet ground, hot pink #FF71CE + electric
-   cyan #01CDFE + lavender #B967FF + lemon #FFFB96 rationed to the town,
-   brand moments and chrome — data panels stay near-monochrome violet
-   charcoal. DAY VAPOR (light, html[data-ui-theme="light"]): pearl /
-   lavender-white ground, the same palette washed to pastels, deep
-   violet ink text. Green/red remain reserved ONLY for up/down + deal
-   states in both themes; vapor pink/cyan never sit where they'd read
-   as gain/loss. The resolved theme is set on <html data-ui-theme> by
-   the pre-paint script in index.html and kept live by the app
-   (always Auto: follows prefers-color-scheme incl. live OS changes;
-   there is no in-app Light/Dark override). The town's own day/night clock
-   keeps running as the world layer underneath — panels follow the UI
-   theme, never the town sky. */
+   NIGHT VAPOR PERMANENTLY (owner decision, Oct 13, 2026: "keep it
+   in dark mode permanently" — supersedes the old Auto-only ruling;
+   Day Vapor is RETIRED). One token system, one theme: deep
+   midnight-violet ground, hot pink #FF71CE + electric cyan #01CDFE +
+   lavender #B967FF + lemon #FFFB96 rationed to the town, brand
+   moments and chrome — data panels stay near-monochrome violet
+   charcoal. Green/red remain reserved ONLY for up/down + deal
+   states; vapor pink/cyan never sit where they'd read as gain/loss.
+   <html data-ui-theme> is forced to "dark" by the pre-paint script
+   in index.html and by the app, regardless of the OS
+   prefers-color-scheme. The Day Vapor token definitions are kept
+   in this file (html[data-ui-theme="light"] blocks) purely as an
+   archive — NOTHING binds to them: the attribute is never set to
+   "light", and no media query selects them. The town's own
+   day/night clock keeps running as the world layer underneath —
+   panels follow Night Vapor, never the town sky. */
 :root {
   color-scheme: dark;
   --bg: #160a30;
   --bg-deep: #100622;
-  --surface: #20123f;
-  --surface-2: #271850;
-  --surface-alt: #2f1d5e;
+  /* CONTAINER REBUILD — Apple pattern (Oct 13, 2026, §P): content
+     containers are NEUTRAL standard material — near-neutral charcoal
+     with only a whisper of violet (B exceeds R by ~4-6 points, vs the
+     old full-violet fills where B exceeded R by 30+). Lightness ladder
+     by importance: hero highest, primary panels mid, quiet panels
+     lowest. Label tones (--text/--dim/--faint) carry hierarchy inside
+     containers, not surface tint. */
+  --surface: #252331;
+  --surface-2: #1f1e29;
+  --surface-alt: #2c2a38;
   --glass: rgba(235, 228, 255, 0.045);
   --text: #f4f0ff;
   --dim: #b6aad4;
   --faint: #a08fc9;
-  --border: #3d2770;
+  --border: #3b3847;
   --hairline: rgba(230, 220, 255, 0.10);
+  /* RADIUS + SPACING TOKENS (§P): ONE container radius — 20px
+     desktop / 18px mobile. Nested elements: radius = container
+     radius − the inset padding between them (e.g. a row inset 8px
+     inside a panel takes 12px / 10px). Spacing rhythm: section gaps
+     20px desktop / 16px mobile; within-group gaps 16px / 12px. */
+  --radius-container: 20px;
+  --radius-nested: 12px;
+  --gap-section: 20px;
+  --gap-group: 16px;
   --accent: #01cdfe;
   --accent-strong: #6fe3ff;
   --accent-ink: #6fe3ff;
@@ -57,9 +75,23 @@
   --trim: #ffd94d;
   --radius: 14px;
   --panel-shadow: rgba(5, 2, 16, 0.55);
-  --slab-1: rgba(38, 22, 74, 0.72);
-  --slab-2: rgba(26, 13, 56, 0.68);
-  --slab-3: rgba(20, 9, 44, 0.72);
+  /* STANDARD MATERIAL — CONTENT LAYER (HIG reconciliation,
+     Oct 13, 2026): Apple's rule — "Don't use Liquid Glass in the
+     content layer." Content panels are NOT glass: near-opaque
+     solid stops, NO backdrop-filter, NO gloss, NO tint — a calm
+     matte fill + one hairline border. The town does NOT bleed
+     through them; readability is intrinsic to the fill, in every
+     backdrop phase. (Supersedes the town-backed-glass stops.) */
+  /* Neutral standard material ladder (§P): hero (.slab) highest,
+     primary content (.slab-t, .quiet-panel) mid, quiet/secondary
+     (.slabz) lowest. Regular-to-thick: fully opaque stops chosen for
+     text contrast over the busy town backdrop. Measured on the hero
+     mid-stop #26242f: --text #f4f0ff ≈ 14.8:1 · --dim #b6aad4 ≈ 7.4:1
+     · --faint #a08fc9 ≈ 5.3:1 — every tone ≥4.5:1 on every ladder
+     step (lowest step #1b1a23: text ≈15.9, dim ≈7.9, faint ≈5.7). */
+  --slab-1: #2d2b38;
+  --slab-2: #26242f;
+  --slab-3: #211f29;
   /* Zebra striping (Oct 9): odd rows sit ONE step darker than the panel
      base in Night Vapor (a deep violet-black wash over the slab
      gradient); hover/focus is a stronger pink step so it always reads
@@ -67,18 +99,20 @@
      slab stops for card-style lists (watchlist). */
   --row-zebra: rgba(5, 1, 16, 0.42);
   --row-hover: rgba(1, 205, 254, 0.13);
-  --slabz-1: rgba(24, 12, 48, 0.97);
-  --slabz-2: rgba(15, 6, 34, 0.96);
-  --slabz-3: rgba(10, 3, 24, 0.97);
-  --slab-t1: rgba(52, 32, 96, 0.55);
-  --slab-t2: rgba(36, 20, 72, 0.50);
-  --slab-t3: rgba(28, 14, 58, 0.55);
-  --panel-edge: rgba(235, 225, 255, 0.28);
-  --sheet-bg: #1a0b36;
-  --bubble-bg: #2a1850;
-  --th-bg: #241447;
+  --slabz-1: #201e28;
+  --slabz-2: #1b1a23;
+  --slabz-3: #17161f;
+  --slab-t1: #282631;
+  --slab-t2: #23222c;
+  --slab-t3: #1e1d26;
+  /* Hairline only (HIG pass): one 1px border, white at low alpha.
+     No bevel, no multi-layer rim, no phase-coloured glint. */
+  --panel-edge: rgba(235, 225, 255, 0.14);
+  --sheet-bg: #1c1b24;
+  --bubble-bg: #2c2a38;
+  --th-bg: #252331;
   /* ——— DESIGN PASS (Oct 13, remedy #10) — measured AA tokens ———
-     Chart ticks: #cfc4ec on the Night Vapor panel (#20123f) = 10.46:1.
+     Chart ticks: #cfc4ec on the neutral panel (#252331) = 9.9:1.
      Recharts tooltips pair a near-black ground with vault-white text
      = 15.01:1. --accent-text is the hot-pink family's TEXT variant
      (#ff9ad5 on the panel = 8.88:1); bright #ff71ce stays for fills.
@@ -90,7 +124,7 @@
   --chart-tick: #cfc4ec;
   --tooltip-bg: #1c1d23;
   --tooltip-text: #f4f0ff;
-  --tooltip-border: #3d2770;
+  --tooltip-border: #3b3847;
   --accent-text: #6fe3ff;
   --ask-text: #9db4d6;
   --cert-text: #c9b995;
@@ -126,9 +160,9 @@ html[data-ui-theme="light"] {
   --teal: #0e7c8c;
   --trim: #96690a;
   --panel-shadow: rgba(58, 28, 110, 0.16);
-  --slab-1: rgba(253, 252, 255, 0.74);
-  --slab-2: rgba(247, 242, 253, 0.70);
-  --slab-3: rgba(243, 238, 252, 0.74);
+  --slab-1: rgba(253, 252, 255, 0.85);
+  --slab-2: rgba(247, 242, 253, 0.82);
+  --slab-3: rgba(243, 238, 252, 0.85);
   /* Zebra striping, Day Vapor: the same relative step as Night Vapor —
      a subtle violet tint darker than the pearl base; text/chips keep
      AA contrast on both row shades. Hover is a stronger magenta step. */
@@ -137,9 +171,9 @@ html[data-ui-theme="light"] {
   --slabz-1: rgba(238, 230, 250, 0.97);
   --slabz-2: rgba(230, 218, 246, 0.96);
   --slabz-3: rgba(224, 210, 242, 0.97);
-  --slab-t1: rgba(255, 255, 255, 0.58);
-  --slab-t2: rgba(250, 246, 255, 0.52);
-  --slab-t3: rgba(244, 238, 255, 0.56);
+  --slab-t1: rgba(255, 255, 255, 0.79);
+  --slab-t2: rgba(250, 246, 255, 0.75);
+  --slab-t3: rgba(244, 238, 255, 0.79);
   --panel-edge: rgba(255, 255, 255, 0.75);
   --sheet-bg: #f8f4fe;
   --bubble-bg: #ffffff;
@@ -160,6 +194,10 @@ html[data-ui-theme="light"] {
   --cert-text: #6d5c33;
   --ink-on-fill: #ffffff;
 }
+/* PERMANENT NIGHT lock: the document always advertises a dark
+   color scheme (scrollbars, form controls, overscroll), whatever
+   the OS setting is. */
+html { color-scheme: dark; }
 body {
   font-family: var(--font-sans);
   /* GLASS VAULT (phase 1): the page background is the VAPOR SKY —
@@ -204,27 +242,23 @@ html[data-ui-theme="light"] body {
   clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
-/* Vault panels float OVER the town: strong dark, semi-opaque surfaces with
-   backdrop blur so text, tables and charts stay crisp while the pixel town
-   shows in the margins, in the gaps between sections, and softly through
-   the panel edges. */
+/* Content panels sit ON the scene as standard material (HIG):
+   solid calm fill, one hairline border, one soft outer shadow.
+   No backdrop-filter, no gloss wash, no bevelled rim — the glossy
+   plastic read came from exactly those layers, and they are gone. */
 .slab {
   background: linear-gradient(180deg, var(--slab-1), var(--slab-2) 55%, var(--slab-3));
-  -webkit-backdrop-filter: blur(20px) saturate(1.55) brightness(1.05);
-  backdrop-filter: blur(20px) saturate(1.55) brightness(1.05);
-  border: 1px solid var(--panel-edge, var(--glass-edge));
-  box-shadow: inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 16px 28px -18px rgba(255,255,255,.35), inset 0 -12px 24px rgba(185,103,255,.07), 0 18px 40px var(--panel-shadow);
-  border-radius: 18px;
+  border: 1px solid var(--panel-edge);
+  box-shadow: 0 18px 40px var(--panel-shadow);
+  border-radius: var(--radius-container);
   position: relative;
 }
 /* Headings / intros that sit directly over the town get the same treatment */
 .town-readable {
   background: linear-gradient(180deg, var(--slab-1), var(--slab-2));
-  -webkit-backdrop-filter: blur(20px) saturate(1.55) brightness(1.05);
-  backdrop-filter: blur(20px) saturate(1.55) brightness(1.05);
-  border: 1px solid var(--panel-edge, var(--glass-edge));
-  box-shadow: inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.06), 0 14px 34px var(--panel-shadow);
-  border-radius: 18px;
+  border: 1px solid var(--panel-edge);
+  box-shadow: 0 14px 34px var(--panel-shadow);
+  border-radius: var(--radius-container);
   position: relative;
 }
 /* Wooden town signpost (replaces the old boxed hunting-ground strip) */
@@ -236,6 +270,12 @@ html[data-ui-theme="light"] body {
   color: #ffe9bd;
 }
 .slab-hover { transition: border-color .18s ease, transform .18s ease; }
+/* Detail-page Back: a borderless text button on the backdrop (no
+   container, no persistent border) — hover/press brighten only.
+   Keyboard focus keeps the global :focus-visible outline. */
+.back-link { background: transparent; border: none; color: var(--accent-ink); cursor: pointer; transition: filter .15s ease; }
+.back-link:hover { filter: brightness(1.3); }
+.back-link:active { filter: brightness(1.5); }
 .slab-hover:hover { border-color: var(--accent-strong); }
 .kicker {
   font-family: var(--font-mono);
@@ -274,15 +314,19 @@ html[data-ui-theme="light"] body {
    every phase. Reduced motion (system setting, surfaced as
    data-tod-instant) swaps instantly with no crossfade. */
 .town-bg svg * { transition: fill 1.4s ease, opacity 1.4s ease; }
+/* HIG pass: content panels keep ONE neutral hairline in every
+   town phase — the warm phase-edge tint (tan/pink at .30+) was
+   the corner glint in the owner's screenshot, and the phase glow
+   / bevel shadow stacks are gone with the glass treatment. The
+   town phase still re-lights the TOWN; panels no longer react. */
 .tod-root .slab, .tod-root .town-readable, .tod-root .quiet-panel {
-  border-color: var(--phase-edge, rgba(242,239,232,0.16));
-  transition: border-color 1.4s ease, box-shadow 1.4s ease;
+  border-color: var(--panel-edge);
 }
 .tod-root .slab {
-  box-shadow: inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 16px 28px -18px rgba(255,255,255,.35), 0 18px 40px var(--panel-shadow), 0 0 30px var(--phase-glow, transparent);
+  box-shadow: 0 18px 40px var(--panel-shadow);
 }
 .tod-root .quiet-panel {
-  box-shadow: inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 16px 28px -18px rgba(255,255,255,.38), inset 0 -12px 24px rgba(185,103,255,.07), 0 10px 26px var(--panel-shadow), 0 0 30px var(--phase-glow, transparent);
+  box-shadow: 0 10px 26px var(--panel-shadow);
 }
 /* Day Vapor: panel borders stay the lilac token (the warm phase edge is a
    dark-desk tint) — panel readability always wins over the town sky. */
@@ -349,15 +393,31 @@ html[data-ui-theme="light"] .town-bg[data-phase="dusk"] { background: #8a9a72; }
 @keyframes scoutBreathe { 0%,100% { transform: scale(1, 1); } 50% { transform: scale(1.05, 0.94); } }
 @keyframes scoutCelebrate { 0%,100% { transform: translateY(0) rotate(0deg); } 30% { transform: translateY(-12px) rotate(-7deg); } 60% { transform: translateY(-12px) rotate(7deg); } }
 .roam-toggle {
-  position: fixed; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 60;
+  position: fixed; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 60;
   display: flex; gap: 6px; pointer-events: auto;
+  /* Floating-chrome rule (owner, Oct 14): the cluster may never
+     extend past the viewport edge at any width — capped to the
+     viewport minus the gutters, wrapping inside itself. */
+  max-width: calc(100vw - 28px); flex-wrap: wrap; justify-content: flex-end;
 }
 .roam-toggle button {
-  border-radius: 999px; padding: 8px 13px; font-size: 12px; font-weight: 700;
+  border-radius: 999px; padding: 8px 13px; font-size: 12px; font-weight: 700; white-space: nowrap;
   background: var(--bubble-bg); color: var(--text); border: 1px solid var(--border);
   box-shadow: 0 10px 24px var(--panel-shadow); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
 .roam-toggle button:hover { border-color: var(--accent-strong); }
+/* On phones the toggle lifts clear of the floating capsule + FAB
+   line (it previously sat underneath both at the corner). */
+@media (max-width: 767px) {
+  .roam-toggle { bottom: calc(88px + env(safe-area-inset-bottom, 0px)); }
+}
+/* Tablet / narrow-desktop widths (~868px was the failing frame):
+   the Pause/Hide pair stacks vertically inside the safe area
+   instead of running off the right edge — both buttons stay fully
+   visible and tappable. */
+@media (max-width: 900px) {
+  .roam-toggle { flex-direction: column; align-items: flex-end; flex-wrap: nowrap; }
+}
 /* On phones the roamers shrink and their bubbles narrow, so a passing scout
    is a cameo, not a cover-up. They still roam the whole page. */
 @media (max-width: 640px) {
@@ -367,7 +427,7 @@ html[data-ui-theme="light"] .town-bg[data-phase="dusk"] { background: #8a9a72; }
 }
 .scout-bubble {
   position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(calc(-50% + var(--bubble-x, 0px)));
-  width: max-content; max-width: 210px; z-index: 3;
+  width: max-content; max-width: min(210px, calc(100vw - 28px)); z-index: 3;
   background: var(--bubble-bg); border: 1px solid var(--border); border-radius: 12px;
   padding: 6px 9px; font-size: 11px; line-height: 1.35; color: var(--text);
   box-shadow: 0 8px 20px var(--panel-shadow);
@@ -431,9 +491,12 @@ html[data-ui-theme="light"] .chrome-num {
   position: relative;
 }
 .dex-bezel::before {
-  content: ""; position: absolute; top: 8px; left: 16px; right: 16px; height: 4px; border-radius: 999px;
-  background: linear-gradient(90deg, #ff71ce, #01cdfe, #b967ff);
-  opacity: 0.85; pointer-events: none;
+  /* HIG pass: the bezel is a CONTENT surface — the pink/cyan/
+     violet light-bar was a coloured trace on content and is now
+     a neutral hairline in the panel-edge language. */
+  content: ""; position: absolute; top: 8px; left: 16px; right: 16px; height: 1px; border-radius: 999px;
+  background: rgba(235,225,255,.28);
+  pointer-events: none;
 }
 .mobile-tab-bar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 70;
@@ -492,7 +555,7 @@ html[data-ui-theme="light"] .chrome-num {
 /* Density (F): TERMINAL permanently — the app sets data-density=
    "terminal" unconditionally, clears any stored preference on load,
    and no density switch exists in the UI. */
-.tod-root[data-density="terminal"] .slab { border-radius: 10px; }
+.tod-root[data-density="terminal"] .slab { border-radius: var(--radius-container); }
 .tod-root[data-density="terminal"] main { font-size: 14px; }
 /* Seasonal events — town-only cosmetics layered over day/night */
 .tod-root[data-event="halloween"] .town-bg { filter: sepia(0.28) hue-rotate(-14deg) saturate(1.08); }
@@ -526,8 +589,9 @@ thead th { position: sticky; top: 0; background: var(--th-bg); z-index: 1; }
    gray): refraction edges/highlights glow faint pink #FF71CE / cyan
    #01CDFE / violet #B967FF. Layer stack: 1 vapor sky (body) →
    2 glass CONTROL surfaces only (.glass-capsule / launcher / pills)
-   → 3 quiet content panels (.quiet-panel / .slab) → 4 town band on
-   Home (.town-band) → 5 floating capsule nav. (Phase 2 removed the
+   → 3 quiet content panels (.quiet-panel / .slab) → 4 the town
+   backdrop behind everything (.town-backdrop) → 5 floating capsule
+   nav. (Phase 2 removed the
    blurred city-silhouette layer entirely — the sky is gradient +
    glows only; see the phase-2 governance note below.)
    CONTRAST (measured, design-pass method — text vs the composited
@@ -541,7 +605,68 @@ thead th { position: sticky; top: 0; background: var(--th-bg); z-index: 1; }
    Every text pairing on glass ≥ 4.5:1 in both themes. Hot pink
    #FF71CE is a FILL paired with midnight ink #1A0B36 (7.43:1);
    white-on-pink is never used. Solid fallback tokens (--glass-solid)
-   carry the same pairings when backdrop-filter is unavailable. */
+   carry the same pairings when backdrop-filter is unavailable.
+   TOWN-BACKED WORST CASE (Oct 13, town backdrop pass — text vs the
+   composited panel over the BRIGHTEST blurred town patch: a house
+   wall / pond sparkle, phase-washed, then scrimmed in the content
+   zone; blurred-patch luminance ≈ 0.30 Night / 0.45 Day before the
+   panel tint):
+   Night quiet-panel (slab-t α≈.87, tint lum ≈.012 + scrim):
+     composite ≈ .045 → --text ≈ 11.9:1 · --dim ≈ 6.3:1 ·
+     --faint ≈ 4.7:1 (the floor — faint is the weakest token)
+   Night launcher (glass-strong α≈.91 over its dim scrim):
+     --text ≈ 12:1 · --dim (tile descriptions) ≈ 5.9:1
+   Night mobile capsule (capsule α≈.77 over un-scrimmed town):
+     --nav-ink ≈ 6.2:1
+   Day quiet-panel (slab-t α≈.77, tint lum ≈.93):
+     composite ≈ .81 → --text ≈ 13.9:1 · --dim ≈ 6.9:1 ·
+     --faint ≈ 5.2:1
+   Day launcher / capsule pairings ≥ 6:1 throughout.
+   EDGE SCRIMS + PERMANENT NIGHT (Oct 13, 2026): with Day Vapor
+   retired, only the Night pairings above survive. The new fixed
+   edge scrims (.edge-scrims, below) re-measured, same method —
+   text vs composite over the brightest blurred midday town patch
+   (lum ≈ 0.30), scrim colour #080316:
+     Desktop nav capsule label (--nav-ink): 4.65:1 (unscrimmed
+       floor) → 9.8:1 (capsule over top scrim, band α≈.90 eff.)
+     Mobile capsule label (--nav-ink): 4.65:1 → 9.1:1 (capsule
+       over bottom scrim, band α≈.80); selected ink 5.5 → 10.7:1
+     Hero text / dim (quiet panel, top zone): 12.9 / 6.7:1 →
+       13.9 / 7.2:1; panel faint floor 5.0 → 5.4:1
+     Top holdings trio in the top reading zone (free-standing over
+       backdrop+edge scrims): heading --text 8.5 → 16.5:1, subtext
+       --dim 4.4 → 8.5:1, Collection link --accent-ink 6.4 → 12.4:1
+   New floor across the scrim-protected pairings: 5.4:1 (faint on
+   the hero panel). Honest residue: the free-standing Top holdings
+   trio, at rest MID-viewport on tall screens (outside both
+   feathers), still sits on the backdrop-scrim alone — subtext
+   ≈1.9:1 over the brightest blurred patch there; the scrims by
+   design cover the top/bottom chrome + reading zones, not the
+   middle of the scroll. */
+/* ——— HIG RECONCILIATION (Oct 13, 2026) — SUPERSEDES the
+   phase-2/restoration material below where they conflict ———
+   Apple HIG, Materials: "Don't use Liquid Glass in the content
+   layer." Content = STANDARD material (opaque matte panels, no
+   backdrop-filter anywhere in the .slab / .quiet-panel /
+   .town-readable family). Glass = the functional layer only,
+   near-neutral, town-infused; REGULAR variant for the launcher,
+   CLEAR-leaning for capsules / FAB / floating pills over the
+   town, backed by the backdrop vignette + edge scrims as Apple's
+   ~35% dimming layer over bright backdrop phases.
+   CONTRAST (baked composites, established method — worst case =
+   brightest blurred midday town patch, lum ≈ 0.30; chrome
+   measured over vignette ≈.34 + its zone scrim):
+     CONTENT (fill ≈ #23222c, intrinsic — backdrop-independent):
+       hero/stat/detail --text ≈ 15.2:1 · --dim ≈ 7.7:1 ·
+       --faint ≈ 5.6:1 · freshness pill --faint body 5.6:1,
+       --dim strongs 7.7:1
+     CHROME (clear glass α≈.24 over dimmed patch):
+       nav unselected --nav-ink ≈ 9.6:1 · selected --sel-ink
+       ≈ 11.6:1 · mobile capsule ≈ 10.6:1 · FAB glyph ≈ 10.6:1
+     LAUNCHER (Regular, α≈.70 over its own scrim):
+       --text ≈ 10.3:1 · tile description --dim ≈ 5.2:1
+   FLOOR: 5.2:1 — every measured pairing ≥ 4.5:1 at the worst
+   patch, in the RESTING default view. */
 /* ——— PHASE 2 (Oct 13, 2026): APPLE LIQUID GLASS GOVERNANCE ———
    Standing rule for the whole project (owner, Oct 13): glass is the
    CONTROL LAYER ONLY (nav capsules, launcher, FAB, floating pills,
@@ -565,16 +690,37 @@ thead th { position: sticky; top: 0; background: var(--th-bg); z-index: 1; }
      background-color sits under the translucent gradients on any
      glass surface — the solid tokens below are ONLY the
      @supports-no-backdrop-filter fallback (see fallback block). */
-  --glass-bg: linear-gradient(145deg, rgba(226,216,255,.16) 0%, rgba(190,168,255,.10) 42%, rgba(150,120,255,.07) 100%);
-  --glass-strong-bg: linear-gradient(145deg, rgba(168,140,255,.26), rgba(120,90,220,.18) 55%, rgba(90,60,180,.14));
+  /* HIG RECONCILIATION (Oct 13, 2026) — glass lives ONLY in the
+     functional layer, and it has NO inherent colour: near-neutral
+     dark fills (a whisper of violet, α .14–.26) + blur 36px +
+     saturate 1.8, so the TOWN infuses the chrome and shines
+     through (Apple: "allow your content to infuse them and shine
+     through"). Edges are one hairline (white α ≈.16); the specular
+     is a single 1px top line, never a bevel stack. Variants:
+     CLEAR-leaning for chrome floating over the town (capsules,
+     FAB, floating pills — --glass-bg / --capsule-bg); REGULAR
+     (denser, luminosity-holding) for the text-heavy LAUNCHER
+     (--glass-strong-bg, α ≈.70). Tint = emphasis only: the
+     selected nav pill's translucent cyan (--sel-bg) is the one
+     coloured fill in the chrome. The solid tokens remain ONLY
+     the @supports-no-backdrop-filter fallback. */
+  --glass-bg: linear-gradient(145deg, rgba(24,19,42,.20), rgba(17,13,32,.15) 42%, rgba(14,11,28,.17));
+  --glass-strong-bg: linear-gradient(145deg, rgba(46,32,84,.72), rgba(35,23,66,.68) 55%, rgba(29,19,56,.72));
   --glass-solid: #341a6b;
   --glass-strong-solid: #3a206e;
-  --glass-edge: rgba(255,255,255,.34);
-  --glass-spec: rgba(255,255,255,.55);
-  --glass-shadow: 0 14px 34px rgba(2,0,12,.38), 0 3px 10px rgba(2,0,12,.26), inset 0 1px 0 rgba(255,255,255,.38), inset 0 0 0 1px rgba(255,255,255,.07), inset 0 -10px 22px rgba(185,103,255,.08);
-  --capsule-bg: linear-gradient(145deg, rgba(226,216,255,.18), rgba(180,158,255,.12) 60%, rgba(150,120,255,.09));
+  --glass-edge: rgba(255,255,255,.16);
+  --glass-spec: rgba(255,255,255,.26);
+  --glass-shadow: 0 14px 34px rgba(2,0,12,.38), 0 3px 10px rgba(2,0,12,.26), inset 0 1px 0 rgba(255,255,255,.22);
+  /* Chrome capsules: one step denser than --glass-bg, still
+     clearly translucent — the town stays visible through them.
+     Legibility over bright town comes from the SCENE (vignette +
+     edge scrims ≈ Apple's 35% dimming layer behind clear glass),
+     never from thickening the fill. */
+  --capsule-bg: linear-gradient(145deg, rgba(28,22,50,.27), rgba(20,16,40,.23) 60%, rgba(17,13,34,.25));
+  --chrome-edge: rgba(255,255,255,.16);
+  --chrome-spec: rgba(255,255,255,.24);
   --nav-ink: #E9DEFF;
-  --delta-bg: linear-gradient(135deg, rgba(52,28,110,.52), rgba(34,16,80,.42));
+  --delta-bg: linear-gradient(135deg, rgba(24,19,42,.20), rgba(17,13,32,.15));
   --delta-ink: #5CF2C8;
   /* Selection / hover states — WHISPERS, not fills (Apple): SELECTED =
      soft translucent cyan tint in the glass + bright ink + a cyan
@@ -586,21 +732,25 @@ thead th { position: sticky; top: 0; background: var(--th-bg); z-index: 1; }
   --sel-bg: linear-gradient(145deg, rgba(1,205,254,.30), rgba(1,205,254,.20));
   --sel-bg-hover: linear-gradient(145deg, rgba(1,205,254,.36), rgba(1,205,254,.25));
   --sel-ink: #E2FAFF;
-  --sel-edge: rgba(103,227,255,.55);
+  --sel-edge: rgba(103,227,255,.32);
   --hover-bg: linear-gradient(145deg, rgba(255,255,255,.13), rgba(255,255,255,.07));
   --press-bg: linear-gradient(145deg, rgba(1,205,254,.22), rgba(1,205,254,.14));
   --tile-sel-bg: linear-gradient(145deg, rgba(1,205,254,.26), rgba(1,205,254,.16));
-  --medallion-bg: linear-gradient(135deg, rgba(1,205,254,.38), rgba(185,103,255,.34) 58%, rgba(255,113,206,.16));
+  /* Medallions sit inside the (Regular) launcher glass: the pink
+     refraction trace is demoted to a barely-read hairline hue. */
+  --medallion-bg: linear-gradient(135deg, rgba(1,205,254,.22), rgba(185,103,255,.18) 58%, rgba(255,113,206,.05));
 }
 html[data-ui-theme="light"] {
-  --glass-bg: linear-gradient(145deg, rgba(255,255,255,.50) 0%, rgba(255,255,255,.30) 38%, rgba(255,255,255,.18) 100%);
-  --glass-strong-bg: linear-gradient(145deg, rgba(255,255,255,.58), rgba(255,255,255,.38) 55%, rgba(240,232,255,.30));
+  --glass-bg: linear-gradient(145deg, rgba(255,255,255,.74) 0%, rgba(255,255,255,.62) 38%, rgba(255,255,255,.55) 100%);
+  --glass-strong-bg: linear-gradient(145deg, rgba(255,255,255,.84), rgba(250,246,255,.80) 55%, rgba(240,232,255,.78));
   --glass-solid: #f1ebff;
   --glass-strong-solid: #f6f1ff;
   --glass-edge: rgba(255,255,255,.85);
   --glass-spec: rgba(255,255,255,.95);
   --glass-shadow: 0 14px 32px rgba(96,52,190,.16), 0 3px 10px rgba(96,52,190,.08), inset 0 1px 0 rgba(255,255,255,.95), inset 0 0 0 1px rgba(255,255,255,.35), inset 0 -10px 20px rgba(255,255,255,.16);
-  --capsule-bg: linear-gradient(145deg, rgba(255,255,255,.55), rgba(255,255,255,.32) 60%, rgba(255,255,255,.20));
+  --capsule-bg: linear-gradient(145deg, rgba(255,255,255,.68), rgba(255,255,255,.56) 60%, rgba(255,255,255,.50));
+  --chrome-edge: rgba(255,255,255,.55);
+  --chrome-spec: rgba(255,255,255,.65);
   --nav-ink: #3A2166;
   --delta-bg: linear-gradient(135deg, rgba(255,255,255,.68), rgba(255,255,255,.42));
   --delta-ink: #0B6B4F;
@@ -610,7 +760,7 @@ html[data-ui-theme="light"] {
   --sel-bg: linear-gradient(145deg, rgba(1,205,254,.36), rgba(1,205,254,.26));
   --sel-bg-hover: linear-gradient(145deg, rgba(1,205,254,.42), rgba(1,205,254,.31));
   --sel-ink: #1A0B36;
-  --sel-edge: rgba(0,122,153,.55);
+  --sel-edge: rgba(0,122,153,.35);
   --hover-bg: linear-gradient(145deg, rgba(255,255,255,.62), rgba(255,255,255,.40));
   --press-bg: linear-gradient(145deg, rgba(1,205,254,.28), rgba(1,205,254,.18));
   --tile-sel-bg: linear-gradient(145deg, rgba(1,205,254,.30), rgba(1,205,254,.20));
@@ -619,24 +769,26 @@ html[data-ui-theme="light"] {
 /* Layer 3 — vapor glass surfaces */
 .glass-panel {
   background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(24px) saturate(1.75) brightness(1.07);
-  backdrop-filter: blur(24px) saturate(1.75) brightness(1.07);
+  -webkit-backdrop-filter: blur(36px) saturate(1.8);
+  backdrop-filter: blur(36px) saturate(1.8);
   border: 1px solid var(--glass-edge);
   box-shadow: var(--glass-shadow);
   border-radius: 20px; position: relative;
 }
+/* Specular = ONE hairline at the top edge, fading within ~4px.
+   The old ::before carried the big glossy top wash + the pink/
+   cyan/violet refraction sweep — deleted, here and everywhere. */
 .glass-panel::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
-  background: linear-gradient(180deg, var(--glass-spec) 0%, transparent 18%), linear-gradient(115deg, rgba(255,113,206,.14) 0%, rgba(1,205,254,.20) 36%, rgba(185,103,255,.12) 52%, transparent 68%);
-  opacity: .45;
+  background: linear-gradient(180deg, rgba(255,255,255,.20) 0, rgba(255,255,255,0) 4px);
 }
 .glass-panel > * { position: relative; z-index: 1; }
 .glass-capsule {
   background: var(--capsule-bg);
-  -webkit-backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
-  backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
-  border: 1px solid var(--glass-edge); border-radius: 999px;
-  box-shadow: 0 12px 28px rgba(15,4,44,.22), inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.14), inset 0 -8px 18px rgba(185,103,255,.07);
+  -webkit-backdrop-filter: blur(36px) saturate(1.8);
+  backdrop-filter: blur(36px) saturate(1.8);
+  border: 1px solid var(--chrome-edge); border-radius: 999px;
+  box-shadow: 0 18px 44px rgba(15,4,44,.20), 0 4px 14px rgba(15,4,44,.10), inset 0 1px 0 var(--chrome-spec);
   position: relative;
 }
 /* ——— QUIET PANELS (phase 2) — the content-surface family under the
@@ -646,44 +798,67 @@ html[data-ui-theme="light"] {
    rows/tables inside stay fully opaque. */
 .quiet-panel {
   background: linear-gradient(180deg, var(--slab-t1), var(--slab-t2) 55%, var(--slab-t3));
-  -webkit-backdrop-filter: blur(20px) saturate(1.6) brightness(1.06);
-  backdrop-filter: blur(20px) saturate(1.6) brightness(1.06);
-  border: 1px solid var(--panel-edge, var(--glass-edge));
-  box-shadow: inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 16px 28px -18px rgba(255,255,255,.38), inset 0 -12px 24px rgba(185,103,255,.07), 0 10px 26px var(--panel-shadow);
-  border-radius: 18px;
+  border: 1px solid var(--panel-edge);
+  box-shadow: 0 10px 26px var(--panel-shadow);
+  border-radius: var(--radius-container);
   position: relative;
-}
-.quiet-panel::before {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
-  background: linear-gradient(180deg, rgba(255,255,255,.14) 0%, transparent 22%), linear-gradient(115deg, rgba(255,113,206,.05) 0%, rgba(1,205,254,.08) 38%, transparent 65%);
 }
 .quiet-panel > * { position: relative; z-index: 1; }
 .quiet-panel.quiet-alt { background: linear-gradient(180deg, var(--slabz-1), var(--slabz-2) 55%, var(--slabz-3)); }
+/* ——— CONTAINER REBUILD (§P) — radius/spacing rhythm + grouping ———
+   Mobile: container radius steps down to 18px and the rhythm
+   tightens (sections 16px, within groups 12px). */
+@media (max-width: 767px) {
+  :root { --radius-container: 18px; --radius-nested: 10px; --gap-section: 16px; --gap-group: 12px; }
+}
+/* Top-level content sections share ONE gap rhythm app-wide, so the
+   page reads as a grid instead of stacked one-offs. (Home's hero,
+   freshness row and grouped stat card set their own gaps in-flow;
+   the detail page's panels keep their in-column rhythm.) */
+.tod-root main section.quiet-panel, .tod-root main section.slab { margin-top: var(--gap-section); }
+/* GROUPED STAT CARD (Home, §P): the four stat tiles are ONE
+   container — a 2×2 grid separated by the app's single hairline
+   treatment. Each quadrant stays a full navigation button with a
+   ≥44px target; the dividers are drawn as borders ON the buttons,
+   so they never eat the targets. Internal padding is consistent
+   (20px desktop / 16px mobile). */
+.stat-group { display: grid; grid-template-columns: 1fr 1fr; }
+.stat-group > button {
+  padding: 20px; text-align: left; width: 100%; min-height: 44px;
+  background: transparent; border: 0; color: var(--text); font-family: inherit; cursor: pointer;
+}
+.stat-group > button:nth-child(odd) { border-right: 1px solid var(--hairline); }
+.stat-group > button:nth-child(-n+2) { border-bottom: 1px solid var(--hairline); }
+.stat-group > button:hover { background: var(--row-hover); }
+@media (max-width: 767px) { .stat-group > button { padding: 16px; } }
 .glass-pill {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--delta-bg); color: var(--delta-ink);
-  -webkit-backdrop-filter: blur(16px) saturate(1.6); backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.75); backdrop-filter: blur(28px) saturate(1.75);
   border: 1px solid var(--glass-edge); border-radius: 999px;
-  box-shadow: 0 10px 22px rgba(15,4,44,.22), inset 0 1px 0 var(--glass-spec);
+  box-shadow: 0 10px 22px rgba(15,4,44,.22), inset 0 1px 0 rgba(255,255,255,.20);
   padding: 6px 12px; font-size: 12.5px; font-weight: 800; white-space: nowrap;
 }
 /* The floating chart price-callout pill was REMOVED (phase 2, owner:
    it duplicated the hero total and could show a stale snapshot
    value). Chart tooltips carry the number on demand. */
 /* ——— Launcher sub-nav (Deel-style) ——— */
-.launcher-scrim { position: fixed; inset: 0; z-index: 85; background: transparent; }
+/* The launcher floats over the TOWN now: its scrim dims the town
+   behind the panel so the glass composite (and its text) holds in
+   both themes; tapping it still closes, exactly as before. */
+.launcher-scrim { position: fixed; inset: 0; z-index: 85; background: rgba(6,2,20,.48); }
+html[data-ui-theme="light"] .launcher-scrim { background: rgba(42,22,80,.28); }
 .launcher-panel {
   background: var(--glass-strong-bg);
-  -webkit-backdrop-filter: blur(28px) saturate(1.8) brightness(1.06);
-  backdrop-filter: blur(28px) saturate(1.8) brightness(1.06);
-  border: 1px solid var(--glass-edge); border-radius: 24px;
-  box-shadow: 0 22px 48px rgba(15,4,44,.28), inset 0 1px 0 var(--glass-spec);
+  -webkit-backdrop-filter: blur(32px) saturate(1.7) brightness(1.06);
+  backdrop-filter: blur(32px) saturate(1.7) brightness(1.06);
+  border: 1px solid var(--chrome-edge); border-radius: 24px;
+  box-shadow: 0 24px 56px rgba(15,4,44,.20), inset 0 1px 0 var(--chrome-spec);
   padding: 16px; position: relative; z-index: 86; overflow: hidden;
 }
 .launcher-panel::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
-  background: linear-gradient(180deg, var(--glass-spec) 0%, transparent 16%), linear-gradient(115deg, rgba(255,113,206,.10) 0%, rgba(1,205,254,.16) 38%, rgba(185,103,255,.10) 55%, transparent 70%);
-  opacity: .5;
+  background: linear-gradient(180deg, rgba(255,255,255,.18) 0, rgba(255,255,255,0) 4px);
 }
 .launcher-panel > * { position: relative; z-index: 1; }
 /* Close control: a clear-glass pill in the header baseline (phase 2 —
@@ -721,8 +896,11 @@ html[data-ui-theme="light"] {
   box-shadow: inset 0 1px 0 var(--glass-spec), 0 4px 10px rgba(15,4,44,.14);
 }
 .launcher-tile .lt-ic svg { width: 26px; height: 26px; }
+.launcher-tile .lt-text { flex: 1 1 auto; min-width: 0; }
 .launcher-tile .lt-name { font-size: 16.5px; font-weight: 800; letter-spacing: -.01em; }
 .launcher-tile .lt-desc { font-size: 13px; line-height: 1.45; color: var(--dim); font-weight: 500; }
+/* Trailing chevron exists ONLY in the phone sheet pattern (≤640px) */
+.launcher-tile .lt-chevron { display: none; flex: none; font-size: 22px; font-weight: 600; line-height: 1; color: var(--faint); }
 /* Current surface: soft translucent cyan tint only — no fill swap */
 .launcher-tile[aria-current="page"] { background: var(--tile-sel-bg); border-color: var(--sel-edge); box-shadow: inset 0 1px 0 var(--glass-spec), inset 2px 0 0 rgba(1,205,254,.55), 0 6px 16px rgba(15,4,44,.08); }
 .launcher-tile[aria-current="page"]:hover { background: var(--sel-bg-hover); }
@@ -734,6 +912,33 @@ html[data-ui-theme="light"] {
   .launcher-grid, .launcher-grid.cols-2 { grid-template-columns: 1fr; }
   .launcher-tile { flex-direction: row; align-items: center; }
   .launcher-tile .lt-ic { width: 44px; height: 44px; font-size: 21px; flex: none; }
+}
+/* ——— PHONE LAUNCHER SHEET (≤640px, owner fix Oct 13) ———
+   At phone widths the launcher is a proper BOTTOM SHEET, not the
+   desktop floating panel: full-width (edge to edge), anchored just
+   above the mobile capsule, top corners rounded. Surfaces become
+   full-width ROWS — medallion left, label + ONE-LINE description,
+   trailing chevron — stacked vertically, each ≥56px tall. The
+   header row and the glass Close pill are unchanged. Above 640px
+   the desktop floating panel + tile grid is untouched. */
+@media (max-width: 640px) {
+  .launcher-panel.launcher-mobile {
+    left: 0; right: 0; width: auto; margin: 0;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    border-radius: 24px 24px 0 0; border-left: none; border-right: none; border-bottom: none;
+    padding: 14px 12px 12px;
+    max-height: min(64vh, 480px);
+  }
+  .launcher-grid, .launcher-grid.cols-2 { display: flex; flex-direction: column; gap: 8px; }
+  .launcher-tile {
+    flex-direction: row; align-items: center; gap: 12px;
+    width: 100%; min-height: 56px; padding: 10px 12px; border-radius: 16px;
+  }
+  .launcher-tile .lt-ic { width: 44px; height: 44px; flex: none; }
+  .launcher-tile .lt-ic svg { width: 24px; height: 24px; }
+  .launcher-tile .lt-name { font-size: 15.5px; }
+  .launcher-tile .lt-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .launcher-tile .lt-chevron { display: block; }
 }
 /* ——— Graded slabs (fan + detail) ———
    Portrait clear case, grader-matched label strip on top, the FULL
@@ -790,12 +995,26 @@ html[data-ui-theme="light"] {
    do not change layout size. Phone: both columns share the exact
    same calc() width and the same aspect-ratio, so all four heights
    are identical there too (staircase offset is margin, not size). */
-.slab-fan { display: flex; justify-content: center; align-items: flex-start; gap: 16px; padding: 6px 4px 10px; }
-.slab-fan .gslab { flex: 0 0 200px; width: 200px; aspect-ratio: 200 / 352; }
-.slab-fan .fan-0 { transform: translateY(-2px); z-index: 3; }
-.slab-fan .fan-1 { transform: rotate(-2.2deg) translateY(8px); z-index: 2; }
-.slab-fan .fan-2 { transform: rotate(2deg) translateY(8px); z-index: 2; }
-.slab-fan .fan-3 { transform: rotate(4deg) translateY(12px); z-index: 1; }
+.slab-fan { display: flex; justify-content: center; align-items: flex-start; gap: 16px; padding: 6px 4px 10px; margin-top: 20px; }
+.slab-fan .gslab { flex: 0 0 200px; width: 200px; aspect-ratio: 200 / 352; position: relative; transition: transform .38s cubic-bezier(.22,.68,.32,1); }
+.slab-fan .fan-0 { transform: translateY(-2px) perspective(720px) rotateX(var(--frx, 0deg)) rotateY(var(--fry, 0deg)) scale(var(--fsc, 1)); z-index: 3; }
+.slab-fan .fan-1 { transform: rotate(-2.2deg) translateY(8px) perspective(720px) rotateX(var(--frx, 0deg)) rotateY(var(--fry, 0deg)) scale(var(--fsc, 1)); z-index: 2; }
+.slab-fan .fan-2 { transform: rotate(2deg) translateY(8px) perspective(720px) rotateX(var(--frx, 0deg)) rotateY(var(--fry, 0deg)) scale(var(--fsc, 1)); z-index: 2; }
+.slab-fan .fan-3 { transform: rotate(4deg) translateY(12px) perspective(720px) rotateX(var(--frx, 0deg)) rotateY(var(--fry, 0deg)) scale(var(--fsc, 1)); z-index: 1; }
+/* Hover micro-interaction (owner, Oct 13): grow a touch, lift
+   above the neighbors, tighten the transition so the tilt tracks
+   the pointer; the sheen sweeps from the pointer vars GradedSlab
+   writes. Keyboard focus gets the same grow (no rotation).
+   Reduced motion: no grow, no sheen, no transition. */
+.slab-fan .gslab:hover { --fsc: 1.045; z-index: 8; transition: transform .14s ease-out; }
+.slab-fan .gslab:focus-visible { --fsc: 1.045; z-index: 8; }
+.slab-fan .gslab::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; background: radial-gradient(320px circle at var(--mx, 50%) var(--my, 38%), rgba(255,255,255,.26), transparent 46%); opacity: 0; transition: opacity .3s ease; pointer-events: none; }
+.slab-fan .gslab:hover::after, .slab-fan .gslab:focus-visible::after { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .slab-fan .gslab { transition: none; }
+  .slab-fan .gslab:hover, .slab-fan .gslab:focus-visible { --fsc: 1; }
+  .slab-fan .gslab::after { display: none; }
+}
 @media (max-width: 767px) {
   .slab-fan { flex-wrap: wrap; gap: 12px; justify-content: center; }
   .slab-fan .gslab, .slab-fan .fan-0, .slab-fan .fan-1, .slab-fan .fan-2, .slab-fan .fan-3 { flex: 0 0 calc(50% - 6px); width: calc(50% - 6px); aspect-ratio: 200 / 362; transform: none; padding: 7px; }
@@ -804,44 +1023,157 @@ html[data-ui-theme="light"] {
   .slab-fan .glabel .l-name { font-size: 11px; }
   .slab-fan .glabel .gnum { font-size: 17px; }
 }
-/* Layer 4 — Home TOWN BAND: a fixed window into the same town (the
-   TownBackground SVG, bottom-anchored), content scrolls above it,
-   soft fade at the top edge, no text or controls on the band. */
-.town-band {
-  position: fixed; left: 0; right: 0; bottom: 0; height: 128px; z-index: 0;
-  overflow: hidden; pointer-events: none;
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, black 34%, black 100%);
-  mask-image: linear-gradient(180deg, transparent 0%, black 34%, black 100%);
+/* ═══ TOWN BACKDROP (Oct 13, owner model) ═══
+   The town is the page backdrop on EVERY data surface: vapor sky
+   across the top of the viewport, the full town scene (the same
+   TownBackground art, phase + season state shared with the Town
+   page) anchored to the bottom, content scrolling over it. The
+   town art itself stays CRISP — the blur comes from the glass
+   panels frosting it where they overlap, never from the art.
+   A scrim gradient darkens (Night) / veils (Day) the town in the
+   content-dense zone so panel text holds over the brightest town
+   patches; it fades to nothing before the bottom reveal, which
+   stays a clean, un-scrimmed vista. Layer order inside the fixed
+   backdrop: sky → town → scrim. */
+.town-backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.backdrop-sky {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(560px 320px at 88% -60px, rgba(1,205,254,.30), transparent 65%),
+    radial-gradient(680px 360px at 2% -60px, rgba(185,103,255,.30), transparent 62%),
+    radial-gradient(480px 260px at 58% 38%, rgba(1,205,254,.14), transparent 62%),
+    linear-gradient(180deg, #0A0420 0%, #1A0B36 38%, #24104E 72%, #2E1660 100%);
 }
-.town-band .town-bg { position: absolute; left: 0; right: 0; bottom: 0; top: auto; height: 100vh; }
-@media (max-width: 767px) { .town-band { height: 104px; } }
+html[data-ui-theme="light"] .backdrop-sky {
+  background:
+    radial-gradient(620px 320px at 88% -60px, rgba(1,205,254,.36), transparent 65%),
+    radial-gradient(720px 360px at 4% -80px, rgba(185,103,255,.32), transparent 65%),
+    radial-gradient(520px 280px at 52% 42%, rgba(255,251,150,.20), transparent 60%),
+    linear-gradient(180deg, #CDB4FF 0%, #E2D4FF 28%, #EFE8FF 54%, #FFF1D6 82%, #FFE9C4 100%);
+}
+.backdrop-town {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 74vh; overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, black 24%, black 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, black 24%, black 100%);
+}
+.backdrop-town .town-bg { position: absolute; left: 0; right: 0; bottom: 0; top: auto; height: 100vh; }
+.backdrop-scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(8,3,26,.60) 0%, rgba(8,3,26,.48) 38%, rgba(8,3,26,.22) 64%, transparent 84%);
+}
+/* ——— BACKDROP VIGNETTE / DIMMING (HIG pass, Oct 13, 2026) ———
+   Apple's rule for CLEAR glass over bright content: add a dark
+   dimming layer (~35% opacity) behind the component. This very
+   soft full-page vertical dimming sits ABOVE the town art and
+   the content-zone scrim, BELOW the edge scrims and all content:
+   ≈.33 dark through the mid-page (where panels used to need it —
+   they no longer do, being opaque — and where floating pills
+   ride), easing at the edges so it composes with the edge scrims
+   instead of stacking into murk: at the top/bottom the scrims
+   already exceed .35, so the vignette contributes least there.
+   No visible edges: four feathered stops, nothing harder. */
+.backdrop-vignette {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(5,2,16,.26) 0%, rgba(5,2,16,.34) 30%, rgba(5,2,16,.34) 62%, rgba(5,2,16,.24) 84%, rgba(5,2,16,.30) 100%);
+}
+html[data-ui-theme="light"] .backdrop-scrim {
+  background: linear-gradient(180deg, rgba(244,239,252,.42) 0%, rgba(244,239,252,.30) 38%, rgba(244,239,252,.10) 64%, transparent 84%);
+}
+/* ——— EDGE SCRIMS (Oct 13, 2026) — feathered readability gradients
+   over the town backdrop, under ALL content and chrome. The wrapper
+   is fixed and pointer-events-none at z-index 1: .town-backdrop is
+   z-index 0, main content is z-index 10, and every chrome layer
+   (roam layer 40, command strip 50, mobile capsule 70, FAB 80,
+   launcher 85+) sits above. Deep midnight violet-black #080316 at
+   strong alpha at the edge, feathering through soft mid stops to
+   fully transparent — no banding edge. Top feather ≈176px (behind
+   the desktop top capsule + top zone); bottom feather ≈208px
+   (behind the mobile capsule / camera zone and the vista's foot —
+   the vista buildings and grounded scouts stay recognizable: the
+   scrim grounds them, it does not swallow them; the roaming scouts
+   render ABOVE this layer). Night Vapor only — the colour is the
+   Night ground family, and no light variant exists or is needed. */
+.edge-scrims { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
+.edge-scrim-top {
+  position: absolute; left: 0; right: 0; top: 0; height: 176px;
+  background: linear-gradient(180deg, rgba(8,3,22,.88) 0%, rgba(8,3,22,.72) 26%, rgba(8,3,22,.44) 52%, rgba(8,3,22,.17) 78%, rgba(8,3,22,0) 100%);
+}
+.edge-scrim-bottom {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 208px;
+  background: linear-gradient(0deg, rgba(8,3,22,.90) 0%, rgba(8,3,22,.70) 30%, rgba(8,3,22,.40) 58%, rgba(8,3,22,.14) 82%, rgba(8,3,22,0) 100%);
+}
+/* ——— BOTTOM REVEAL — the open vista at the foot of every data
+   surface: an in-flow, content-free stretch where the backdrop
+   town shows crisp and full (town sky, buildings, ground), with
+   the scouts standing/roaming on its ground plane. Substantially
+   taller than the old 128px band sliver. No text, no controls. */
+.town-reveal { height: clamp(300px, 46vh, 520px); }
+@media (max-width: 767px) { .town-reveal { height: clamp(260px, 40vh, 420px); } }
+/* ——— SPRITE SUPPRESSION — while any launcher/sheet is open, no
+   sprite renders over it: the whole roaming layer hides, and
+   returns when it closes. (The React side also stops rendering
+   them; this is the belt to that suspender, keyed off the root's
+   data-launcher-open. The perched Gengar that used to sit on the
+   mobile capsule is GONE entirely — owner, Oct 13, 2026: scouts
+   removed from the mobile data UI; at phone widths the roaming
+   layer itself is never mounted, so these rules now only bite on
+   desktop and on the Town page.) */
+.tod-root[data-launcher-open="1"] .roam-layer { visibility: hidden; }
+.tod-root[data-launcher-open="1"] .roam-toggle { visibility: hidden; }
 /* ——— Mobile chrome: detached floating glass capsule + FAB sibling ——— */
 @media (max-width: 767px) {
+  /* ONE height token for the mobile chrome pair (owner, Oct 13):
+     the nav capsule's height and the Show Mode camera FAB's diameter
+     both derive from --capsule-h (62px = 48px slots + 6px padding
+     top/bottom + 2px border), so the circle can never drift taller
+     or shorter than the capsule again. */
+  .tod-root { --capsule-h: 62px; }
   .mobile-tab-bar {
     left: 12px; right: 88px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    height: var(--capsule-h); box-sizing: border-box;
     border-radius: 999px; padding: 6px;
     background: var(--capsule-bg);
-    -webkit-backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
-    backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
-    border: 1px solid var(--glass-edge);
-    box-shadow: 0 14px 30px rgba(15,4,44,.26), inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.14);
+    -webkit-backdrop-filter: blur(36px) saturate(1.8);
+    backdrop-filter: blur(36px) saturate(1.8);
+    border: 1px solid var(--chrome-edge);
+    box-shadow: 0 18px 40px rgba(15,4,44,.20), inset 0 1px 0 var(--chrome-spec);
     overflow: visible;
   }
   .mobile-tab-bar button { min-height: 48px; border-radius: 999px; }
   .mobile-tab-spacer { height: calc(118px + env(safe-area-inset-bottom, 0px)); }
-  .nav-scout-perch { position: absolute; top: -17px; right: 30px; z-index: 2; pointer-events: none; filter: drop-shadow(0 2px 0 rgba(26,11,54,.25)); animation: scoutBob 2.8s ease-in-out infinite; }
   .show-mode-fab {
     right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-    width: 61px; height: 61px; min-width: 61px; min-height: 61px;
+    width: var(--capsule-h); height: var(--capsule-h); min-width: var(--capsule-h); min-height: var(--capsule-h);
     background: var(--capsule-bg); color: var(--nav-ink);
-    border: 1px solid var(--glass-edge);
-    -webkit-backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
-    backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
-    box-shadow: 0 14px 30px rgba(15,4,44,.24), inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.14);
+    border: 1px solid var(--chrome-edge);
+    -webkit-backdrop-filter: blur(36px) saturate(1.8);
+    backdrop-filter: blur(36px) saturate(1.8);
+    box-shadow: 0 18px 40px rgba(15,4,44,.20), inset 0 1px 0 var(--chrome-spec);
   }
   .show-mode-fab-dot { border-color: var(--glass-strong-solid); }
+  /* FULL-COLUMN HERO SLAB (owner, Oct 13 — REVERSAL of the same
+     day's edge-to-edge steer, after seeing edge-to-edge live):
+     "Have it follow the margins already set in page." On phones the
+     detail slab spans the full CONTENT column (viewport minus the
+     standard page padding), edges aligned with the value tiles
+     below it — bigger than the old 300px column cap, but inside the
+     grid like everything else. The case still scales as ONE
+     proportional unit: the art window keeps its aspect-ratio, and
+     the label scales with the case via container units — this is
+     the hero slab only, never the fan grid. Desktop is untouched
+     (the slab keeps its 300px left column). The gyro glare from the
+     original steer stands unchanged. (The class name holo-bleed is
+     historical; it no longer bleeds.) */
+  .holo-bleed { container-type: inline-size; }
+  .holo-bleed .holo-persp { width: 100%; }
+  .holo-bleed .glabel { height: calc(25.7cqw - 5px); }
+  .holo-bleed .glabel .band { font-size: 9px; padding: 4px 12px; }
+  .holo-bleed .glabel .lrow { padding: 8px 12px 9px; }
+  .holo-bleed .glabel .l-name { font-size: 16px; }
+  .holo-bleed .glabel .l-set { font-size: 12px; }
+  .holo-bleed .glabel .gword { font-size: 10px; }
+  .holo-bleed .glabel .gnum { font-size: 27px; }
 }
-@media (prefers-reduced-motion: reduce) { .nav-scout-perch { animation: none; } }
 /* Desktop top bar as floating capsule: inset from the edges, detached */
 .command-strip .glass-capsule { margin: 2px 8px 0; }
 
@@ -857,14 +1189,14 @@ html[data-ui-theme="light"] {
    (via the tokens) every segmented control using --sel-bg. */
 .nav-pill {
   background: rgba(255,255,255,.04); color: var(--nav-ink);
-  border: 1px solid var(--glass-edge);
+  border: 1px solid var(--chrome-edge);
   transition: background .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease;
 }
-.nav-pill:hover { background: var(--hover-bg); color: var(--nav-ink); border-color: var(--glass-edge); }
+.nav-pill:hover { background: var(--hover-bg); color: var(--nav-ink); border-color: var(--chrome-edge); }
 .nav-pill:active { background: var(--press-bg); }
 .nav-pill[aria-current="page"] {
   background: var(--sel-bg); color: var(--sel-ink); border-color: var(--sel-edge); font-weight: 700;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), inset 0 -2px 0 rgba(1,205,254,.45);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(1,205,254,.20), 0 3px 12px rgba(1,205,254,.10);
 }
 .nav-pill[aria-current="page"]:hover { background: var(--sel-bg-hover); color: var(--sel-ink); }
 .mobile-nav-btn {
@@ -875,13 +1207,20 @@ html[data-ui-theme="light"] {
 .mobile-nav-btn:active { background: var(--press-bg); }
 .mobile-nav-btn[aria-current="page"] {
   background: var(--sel-bg); color: var(--sel-ink); font-weight: 700;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), inset 0 -2px 0 rgba(1,205,254,.45);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(1,205,254,.20), 0 3px 12px rgba(1,205,254,.10);
 }
 .mobile-nav-btn[aria-current="page"]:hover { background: var(--sel-bg-hover); color: var(--sel-ink); }
 /* Detail slab: one deterministic spec — fixed 300px column width,
    fixed 72px label + fixed-aspect art window (same geometry math
    as the fan, at its own size), independent of native image size. */
 .holo-slab.gslab { width: 100%; box-sizing: border-box; }
+/* The 300px desktop cap lives HERE, not inline (owner escalation,
+   Oct 13): an inline width silently outranked the mobile bleed
+   override below — the wrapper went edge-to-edge while the slab
+   stayed capped at 300px, which is exactly the inset slab the owner
+   kept screenshotting. Stylesheet-vs-stylesheet, the more specific
+   .holo-bleed .holo-persp rule inside the phone media query wins. */
+.holo-persp { width: min(300px, 100%); }
 .slab-hover { transition: border-color .16s ease, background .16s ease; }
 .slab-hover:hover { border-color: var(--sel-edge); }
 /* Fallback ONLY where backdrop-filter is unavailable: glass surfaces
