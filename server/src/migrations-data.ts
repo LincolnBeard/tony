@@ -63,5 +63,17 @@ export const MIGRATIONS: EmbeddedMigration[] = [
   {
     "name": "0014_investment_committee_records.sql",
     "sql": "CREATE TABLE `committee_records` (\n  `id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,\n  `deal_id` integer NOT NULL,\n  `card_name` text NOT NULL DEFAULT '',\n  `score` integer NOT NULL DEFAULT 0,\n  `verdict` text NOT NULL DEFAULT '',\n  `bull` text NOT NULL DEFAULT '',\n  `bear` text NOT NULL DEFAULT '',\n  `liquidity` text NOT NULL DEFAULT '',\n  `rationale` text NOT NULL DEFAULT '',\n  `created_at` text NOT NULL DEFAULT ''\n);\n--> statement-breakpoint\nCREATE UNIQUE INDEX `committee_records_deal_id_unique` ON `committee_records` (`deal_id`);\n"
+  },
+  {
+    "name": "0015_add_card_forecasts.sql",
+    "sql": "CREATE TABLE `card_forecasts` (\n  `id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,\n  `cert` text NOT NULL,\n  `issued_at` text NOT NULL,\n  `horizon_days` integer NOT NULL,\n  `range_low` real NOT NULL,\n  `range_high` real NOT NULL,\n  `midpoint` real NOT NULL,\n  `confidence` text NOT NULL,\n  `basis_n` integer NOT NULL DEFAULT 0,\n  `basis_last_sale` text NOT NULL DEFAULT '',\n  `liquidity` text NOT NULL DEFAULT 'thin',\n  `regime` text NOT NULL DEFAULT 'normal',\n  `model_version` text NOT NULL DEFAULT 'fc-v1',\n  `origin` text NOT NULL DEFAULT 'live',\n  `status` text NOT NULL DEFAULT 'open',\n  `realized_value` real,\n  `in_range` integer,\n  `graded_at` text\n);\n--> statement-breakpoint\nCREATE INDEX `card_forecasts_cert_idx` ON `card_forecasts` (`cert`);\n--> statement-breakpoint\nCREATE INDEX `card_forecasts_origin_status_idx` ON `card_forecasts` (`origin`, `status`);\n"
+  },
+  {
+    "name": "0016_add_card_cost_basis.sql",
+    "sql": "ALTER TABLE `cards` ADD COLUMN `cost_basis_usd` real;\n--> statement-breakpoint\nALTER TABLE `cards` ADD COLUMN `cost_note` text;\n--> statement-breakpoint\nALTER TABLE `cards` ADD COLUMN `cost_date` text;\n"
+  },
+  {
+    "name": "0017_add_card_image_url.sql",
+    "sql": "ALTER TABLE `cards` ADD COLUMN `image_url` text;\n"
   }
 ];

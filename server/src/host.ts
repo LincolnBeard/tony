@@ -152,6 +152,7 @@ async function openDb(): Promise<DbHandle> {
 
 const EXPECTED_TABLES = [
   "cards",
+  "card_forecasts",
   "sales_evidence",
   "watchlist",
   "portfolio_snapshots",
