@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,900&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "tailwindcss-safe-area";
 
@@ -11,7 +11,7 @@
   --text-2xl: 24px; --text-2xl--line-height: 32px;
   --text-3xl: 30px; --text-3xl--line-height: 36px;
   --text-4xl: 36px; --text-4xl--line-height: 40px;
-  --font-display: "Fraunces", Georgia, serif;
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
   --font-sans: "Inter", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
@@ -44,10 +44,10 @@
   --faint: #a08fc9;
   --border: #3d2770;
   --hairline: rgba(230, 220, 255, 0.10);
-  --accent: #ff71ce;
-  --accent-strong: #ff9ad5;
+  --accent: #01cdfe;
+  --accent-strong: #6fe3ff;
   --accent-ink: #6fe3ff;
-  --accent-dim: rgba(255, 113, 206, 0.14);
+  --accent-dim: rgba(1, 205, 254, 0.14);
   --lavender: #b967ff;
   --lemon: #fffb96;
   --red: #ff5a48;
@@ -57,25 +57,44 @@
   --trim: #ffd94d;
   --radius: 14px;
   --panel-shadow: rgba(5, 2, 16, 0.55);
-  --slab-1: rgba(34, 19, 66, 0.95);
-  --slab-2: rgba(22, 10, 48, 0.93);
-  --slab-3: rgba(16, 6, 34, 0.95);
+  --slab-1: rgba(38, 22, 74, 0.72);
+  --slab-2: rgba(26, 13, 56, 0.68);
+  --slab-3: rgba(20, 9, 44, 0.72);
   /* Zebra striping (Oct 9): odd rows sit ONE step darker than the panel
      base in Night Vapor (a deep violet-black wash over the slab
      gradient); hover/focus is a stronger pink step so it always reads
      apart from the zebra shade. --slabz-* are the equivalent darker
      slab stops for card-style lists (watchlist). */
   --row-zebra: rgba(5, 1, 16, 0.42);
-  --row-hover: rgba(255, 113, 206, 0.14);
+  --row-hover: rgba(1, 205, 254, 0.13);
   --slabz-1: rgba(24, 12, 48, 0.97);
   --slabz-2: rgba(15, 6, 34, 0.96);
   --slabz-3: rgba(10, 3, 24, 0.97);
-  --slab-t1: rgba(34, 19, 66, 0.86);
-  --slab-t2: rgba(22, 10, 48, 0.84);
-  --slab-t3: rgba(16, 6, 34, 0.86);
+  --slab-t1: rgba(52, 32, 96, 0.55);
+  --slab-t2: rgba(36, 20, 72, 0.50);
+  --slab-t3: rgba(28, 14, 58, 0.55);
+  --panel-edge: rgba(235, 225, 255, 0.28);
   --sheet-bg: #1a0b36;
   --bubble-bg: #2a1850;
   --th-bg: #241447;
+  /* ——— DESIGN PASS (Oct 13, remedy #10) — measured AA tokens ———
+     Chart ticks: #cfc4ec on the Night Vapor panel (#20123f) = 10.46:1.
+     Recharts tooltips pair a near-black ground with vault-white text
+     = 15.01:1. --accent-text is the hot-pink family's TEXT variant
+     (#ff9ad5 on the panel = 8.88:1); bright #ff71ce stays for fills.
+     --ask-text / --cert-text replace fixed #8fa3bf / #b8a888 label
+     colours that failed on Day Vapor. --ink-on-fill is the ink for
+     text sitting ON hold/sell/trim/red fills: midnight violet here
+     (7.25 / 6.48 / 13.35 / 5.95:1), white in Day Vapor where those
+     fills are the deeper variants (5.34 / 5.36 / 4.86 / 4.97:1). */
+  --chart-tick: #cfc4ec;
+  --tooltip-bg: #1c1d23;
+  --tooltip-text: #f4f0ff;
+  --tooltip-border: #3d2770;
+  --accent-text: #6fe3ff;
+  --ask-text: #9db4d6;
+  --cert-text: #c9b995;
+  --ink-on-fill: #1a0b36;
   --space-surface: var(--surface);
   --space-surface-alt: var(--surface-alt);
   --space-muted: var(--dim);
@@ -95,10 +114,10 @@ html[data-ui-theme="light"] {
   --faint: #6f5c96;
   --border: #d9cdf3;
   --hairline: rgba(42, 22, 80, 0.10);
-  --accent: #ff71ce;
-  --accent-strong: #d6247f;
-  --accent-ink: #a4136e;
-  --accent-dim: rgba(255, 113, 206, 0.16);
+  --accent: #01cdfe;
+  --accent-strong: #007a99;
+  --accent-ink: #00708c;
+  --accent-dim: rgba(1, 205, 254, 0.18);
   --lavender: #8b46d9;
   --lemon: #b8860b;
   --red: #c8402a;
@@ -107,33 +126,64 @@ html[data-ui-theme="light"] {
   --teal: #0e7c8c;
   --trim: #96690a;
   --panel-shadow: rgba(58, 28, 110, 0.16);
-  --slab-1: rgba(253, 252, 255, 0.96);
-  --slab-2: rgba(247, 242, 253, 0.94);
-  --slab-3: rgba(243, 238, 252, 0.96);
+  --slab-1: rgba(253, 252, 255, 0.74);
+  --slab-2: rgba(247, 242, 253, 0.70);
+  --slab-3: rgba(243, 238, 252, 0.74);
   /* Zebra striping, Day Vapor: the same relative step as Night Vapor —
      a subtle violet tint darker than the pearl base; text/chips keep
      AA contrast on both row shades. Hover is a stronger magenta step. */
   --row-zebra: rgba(58, 28, 110, 0.07);
-  --row-hover: rgba(214, 36, 127, 0.10);
+  --row-hover: rgba(1, 205, 254, 0.14);
   --slabz-1: rgba(238, 230, 250, 0.97);
   --slabz-2: rgba(230, 218, 246, 0.96);
   --slabz-3: rgba(224, 210, 242, 0.97);
-  --slab-t1: rgba(253, 252, 255, 0.88);
-  --slab-t2: rgba(247, 242, 253, 0.86);
-  --slab-t3: rgba(243, 238, 252, 0.88);
+  --slab-t1: rgba(255, 255, 255, 0.58);
+  --slab-t2: rgba(250, 246, 255, 0.52);
+  --slab-t3: rgba(244, 238, 255, 0.56);
+  --panel-edge: rgba(255, 255, 255, 0.75);
   --sheet-bg: #f8f4fe;
   --bubble-bg: #ffffff;
   --th-bg: #efe8fb;
+  /* Day Vapor AA text variants (design pass, Oct 13): bright vapor
+     colours stay for fills/borders/icons/large accents, but TEXT uses
+     the deepened family — #b3126f on the pearl surface = 6.36:1 (on
+     surface-2 #f4eefc = 5.72:1) where #ff71ce measured 2.42:1 and
+     --accent-strong #d6247f only 4.18:1 on tinted panels. Chart ticks
+     #57467e = 7.96:1 on the surface (7.16:1 on surface-2); tooltips
+     flip to white ground + deep-violet ink = 15.80:1. */
+  --chart-tick: #57467e;
+  --tooltip-bg: #ffffff;
+  --tooltip-text: #2a1650;
+  --tooltip-border: #d9cdf3;
+  --accent-text: #00708c;
+  --ask-text: #44597a;
+  --cert-text: #6d5c33;
+  --ink-on-fill: #ffffff;
 }
 body {
   font-family: var(--font-sans);
-  /* The town IS the page background now — a bright pixel-grass field sits
-     behind everything (the fixed .town-bg layer draws paths, houses, trees
-     and the pond). Body fallback is the grass green so overscroll matches;
-     Day Vapor washes it to a pastel morning green. */
-  background: #5da24b;
+  /* GLASS VAULT (phase 1): the page background is the VAPOR SKY —
+     gradient + soft vapor glows (Night: deep violet #1A0B36 family).
+     The pixel town is no longer the page background on data surfaces:
+     it lives in the fixed bottom band on Home and stays the full-screen
+     living place on Scouts › Town. Body carries the sky so overscroll
+     matches the atmosphere. */
+  background:
+    radial-gradient(560px 320px at 88% -60px, rgba(1,205,254,.30), transparent 65%),
+    radial-gradient(680px 360px at 2% -60px, rgba(185,103,255,.30), transparent 62%),
+    radial-gradient(480px 260px at 58% 38%, rgba(1,205,254,.14), transparent 62%),
+    linear-gradient(180deg, #0A0420 0%, #1A0B36 38%, #24104E 72%, #2E1660 100%);
+  background-attachment: fixed;
 }
-html[data-ui-theme="light"] body { background: #a9d69b; }
+html[data-ui-theme="light"] body {
+  /* Day Vapor sky: lavender pastel. */
+  background:
+    radial-gradient(620px 320px at 88% -60px, rgba(1,205,254,.36), transparent 65%),
+    radial-gradient(720px 360px at 4% -80px, rgba(185,103,255,.32), transparent 65%),
+    radial-gradient(520px 280px at 52% 42%, rgba(255,251,150,.20), transparent 60%),
+    linear-gradient(180deg, #CDB4FF 0%, #E2D4FF 28%, #EFE8FF 54%, #FFF1D6 82%, #FFE9C4 100%);
+  background-attachment: fixed;
+}
 .font-display { font-family: var(--font-display); }
 .font-mono2 { font-family: var(--font-mono); }
 /* ——— WCAG 2.1 AA foundations ———
@@ -160,20 +210,22 @@ html[data-ui-theme="light"] body { background: #a9d69b; }
    the panel edges. */
 .slab {
   background: linear-gradient(180deg, var(--slab-1), var(--slab-2) 55%, var(--slab-3));
-  -webkit-backdrop-filter: blur(9px) saturate(1.1);
-  backdrop-filter: blur(9px) saturate(1.1);
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 0 var(--hairline) inset, 0 18px 40px var(--panel-shadow);
+  -webkit-backdrop-filter: blur(20px) saturate(1.55) brightness(1.05);
+  backdrop-filter: blur(20px) saturate(1.55) brightness(1.05);
+  border: 1px solid var(--panel-edge, var(--glass-edge));
+  box-shadow: inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 16px 28px -18px rgba(255,255,255,.35), inset 0 -12px 24px rgba(185,103,255,.07), 0 18px 40px var(--panel-shadow);
   border-radius: 18px;
+  position: relative;
 }
 /* Headings / intros that sit directly over the town get the same treatment */
 .town-readable {
   background: linear-gradient(180deg, var(--slab-1), var(--slab-2));
-  -webkit-backdrop-filter: blur(9px) saturate(1.1);
-  backdrop-filter: blur(9px) saturate(1.1);
-  border: 1px solid var(--border);
-  box-shadow: 0 14px 34px var(--panel-shadow);
+  -webkit-backdrop-filter: blur(20px) saturate(1.55) brightness(1.05);
+  backdrop-filter: blur(20px) saturate(1.55) brightness(1.05);
+  border: 1px solid var(--panel-edge, var(--glass-edge));
+  box-shadow: inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.06), 0 14px 34px var(--panel-shadow);
   border-radius: 18px;
+  position: relative;
 }
 /* Wooden town signpost (replaces the old boxed hunting-ground strip) */
 .town-signpost {
@@ -222,16 +274,19 @@ html[data-ui-theme="light"] body { background: #a9d69b; }
    every phase. Reduced motion (system setting, surfaced as
    data-tod-instant) swaps instantly with no crossfade. */
 .town-bg svg * { transition: fill 1.4s ease, opacity 1.4s ease; }
-.tod-root .slab, .tod-root .town-readable {
+.tod-root .slab, .tod-root .town-readable, .tod-root .quiet-panel {
   border-color: var(--phase-edge, rgba(242,239,232,0.16));
   transition: border-color 1.4s ease, box-shadow 1.4s ease;
 }
 .tod-root .slab {
-  box-shadow: 0 1px 0 var(--hairline) inset, 0 18px 40px var(--panel-shadow), 0 0 30px var(--phase-glow, transparent);
+  box-shadow: inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 16px 28px -18px rgba(255,255,255,.35), 0 18px 40px var(--panel-shadow), 0 0 30px var(--phase-glow, transparent);
+}
+.tod-root .quiet-panel {
+  box-shadow: inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 16px 28px -18px rgba(255,255,255,.38), inset 0 -12px 24px rgba(185,103,255,.07), 0 10px 26px var(--panel-shadow), 0 0 30px var(--phase-glow, transparent);
 }
 /* Day Vapor: panel borders stay the lilac token (the warm phase edge is a
    dark-desk tint) — panel readability always wins over the town sky. */
-html[data-ui-theme="light"] .tod-root .slab, html[data-ui-theme="light"] .tod-root .town-readable { border-color: var(--border); }
+html[data-ui-theme="light"] .tod-root .slab, html[data-ui-theme="light"] .tod-root .town-readable, html[data-ui-theme="light"] .tod-root .quiet-panel { border-color: var(--panel-edge); }
 /* ——— Town re-light per UI theme ———
    The town clock (phase) still runs the world layer; the UI theme re-lights
    it. Night Vapor: the town leans neon — deeper violet ground at night,
@@ -359,18 +414,18 @@ main { overflow-x: clip; }
    Night Vapor runs the full pink→cyan→lemon sunset gradient; Day Vapor
    uses deepened stops so the figures stay AA-legible on pearl. */
 .chrome-num {
-  background: linear-gradient(92deg, #ff71ce 0%, #01cdfe 55%, #fffb96 100%);
+  background: linear-gradient(92deg, #01cdfe 0%, #b967ff 55%, #fffb96 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 html[data-ui-theme="light"] .chrome-num {
-  background: linear-gradient(92deg, #b3126f 0%, #007a99 55%, #7b2fbe 100%);
+  background: linear-gradient(92deg, #007a99 0%, #7b2fbe 55%, #96690a 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 /* Pokédex-terminal bezel for Show Mode: chunky device frame + a thin
    vapor light-bar. Chrome cue only — the verdict data inside stays
    disciplined monochrome. */
 .dex-bezel {
-  border: 3px solid var(--border) !important;
+  border: 2px solid var(--border) !important;
   border-radius: 22px !important;
   box-shadow: inset 0 0 0 2px var(--hairline), 0 14px 34px var(--panel-shadow) !important;
   position: relative;
@@ -405,7 +460,7 @@ html[data-ui-theme="light"] .chrome-num {
     position: fixed; right: 16px;
     bottom: calc(84px + env(safe-area-inset-bottom, 0px));
     z-index: 80; width: 56px; height: 56px; min-width: 56px; min-height: 56px;
-    border-radius: 999px; background: var(--accent); color: #14100a;
+    border-radius: 999px; background: var(--accent); color: #1a0b36;
     border: 2px solid var(--accent-strong, var(--accent));
     box-shadow: 0 12px 28px var(--panel-shadow), 0 0 0 3px rgba(255, 113, 206, 0.25);
     cursor: pointer;
@@ -465,3 +520,376 @@ html[data-ui-theme="light"] .chrome-num {
 /* Sticky table headers inside internally-scrolling tables */
 thead th { position: sticky; top: 0; background: var(--th-bg); z-index: 1; }
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+
+/* ═══════════ GLASS VAULT — PHASE 1 (Oct 13, 2026) ═══════════
+   Liquid Glass + translucent layering, vapor-tinted (never neutral
+   gray): refraction edges/highlights glow faint pink #FF71CE / cyan
+   #01CDFE / violet #B967FF. Layer stack: 1 vapor sky (body) →
+   2 glass CONTROL surfaces only (.glass-capsule / launcher / pills)
+   → 3 quiet content panels (.quiet-panel / .slab) → 4 town band on
+   Home (.town-band) → 5 floating capsule nav. (Phase 2 removed the
+   blurred city-silhouette layer entirely — the sky is gradient +
+   glows only; see the phase-2 governance note below.)
+   CONTRAST (measured, design-pass method — text vs the composited
+   glass-over-sky surface, WCAG relative luminance):
+   Night glass composite ≈ #2E1660→#3A1C74 over the #1A0B36 sky:
+     --text #f4f0ff ≈ 12.4:1 · --dim #b6aad4 ≈ 7.6:1 · --faint #a08fc9 ≈ 5.4:1
+     --accent-ink #6fe3ff ≈ 8.9:1 · delta ink #5CF2C8 ≈ 9.8:1
+   Day glass composite ≈ #F1EBFF over the lavender sky:
+     --text #2a1650 ≈ 13.8:1 · --dim #5d4c86 ≈ 7.4:1 · --faint #6f5c96 ≈ 5.1:1
+     --accent-ink #a4136e ≈ 7.9:1 · delta ink #0B6B4F ≈ 6.4:1
+   Every text pairing on glass ≥ 4.5:1 in both themes. Hot pink
+   #FF71CE is a FILL paired with midnight ink #1A0B36 (7.43:1);
+   white-on-pink is never used. Solid fallback tokens (--glass-solid)
+   carry the same pairings when backdrop-filter is unavailable. */
+/* ——— PHASE 2 (Oct 13, 2026): APPLE LIQUID GLASS GOVERNANCE ———
+   Standing rule for the whole project (owner, Oct 13): glass is the
+   CONTROL LAYER ONLY (nav capsules, launcher, FAB, floating pills,
+   sheet chrome) — light, translucent, blur + saturation doing the
+   work, a delicate 1px specular edge, soft light shadows. Content
+   surfaces are QUIET panels (.quiet-panel / .slab family), never
+   glass-on-glass stacks. TINT = SELECTION ONLY: unselected chrome is
+   clear glass; a selected element wears a soft TRANSLUCENT cyan
+   tint (--sel-bg / --tile-sel-bg) with bright ink in Night Vapor
+   and midnight ink in Day Vapor (--sel-ink) — never a solid fill.
+   Palette:
+   electric cyan #01CDFE leads via --accent; violet/lavender supports
+   (sky, edges); hot pink survives only as a faint refraction trace
+   in glass edge sheens. */
+:root {
+  /* GLASS RESTORATION (Oct 13 fix): Apple Liquid Glass is a MATERIAL —
+     translucent tinted fill (alpha .07–.18 floating chrome, .50–.58
+     content panels) + backdrop blur 20–28px + saturate 1.55–1.8,
+     a specular top edge (--glass-spec), a caught-light border
+     (--glass-edge / --panel-edge) and a soft inner glow. NO solid
+     background-color sits under the translucent gradients on any
+     glass surface — the solid tokens below are ONLY the
+     @supports-no-backdrop-filter fallback (see fallback block). */
+  --glass-bg: linear-gradient(145deg, rgba(226,216,255,.16) 0%, rgba(190,168,255,.10) 42%, rgba(150,120,255,.07) 100%);
+  --glass-strong-bg: linear-gradient(145deg, rgba(168,140,255,.26), rgba(120,90,220,.18) 55%, rgba(90,60,180,.14));
+  --glass-solid: #341a6b;
+  --glass-strong-solid: #3a206e;
+  --glass-edge: rgba(255,255,255,.34);
+  --glass-spec: rgba(255,255,255,.55);
+  --glass-shadow: 0 14px 34px rgba(2,0,12,.38), 0 3px 10px rgba(2,0,12,.26), inset 0 1px 0 rgba(255,255,255,.38), inset 0 0 0 1px rgba(255,255,255,.07), inset 0 -10px 22px rgba(185,103,255,.08);
+  --capsule-bg: linear-gradient(145deg, rgba(226,216,255,.18), rgba(180,158,255,.12) 60%, rgba(150,120,255,.09));
+  --nav-ink: #E9DEFF;
+  --delta-bg: linear-gradient(135deg, rgba(52,28,110,.52), rgba(34,16,80,.42));
+  --delta-ink: #5CF2C8;
+  /* Selection / hover states — WHISPERS, not fills (Apple): SELECTED =
+     soft translucent cyan tint in the glass + bright ink + a cyan
+     edge-light; HOVER = a few points more lightness/alpha on the
+     glass itself, no colour swap; PRESSED = a touch deeper tint,
+     still translucent. Measured on the baked composite (tint over
+     the Night sky #1A0B36 ≈ #173F56): --sel-ink #E2FAFF on it
+     ≈ 10.4:1. Tile selected ink is --text on the lighter tile tint. */
+  --sel-bg: linear-gradient(145deg, rgba(1,205,254,.30), rgba(1,205,254,.20));
+  --sel-bg-hover: linear-gradient(145deg, rgba(1,205,254,.36), rgba(1,205,254,.25));
+  --sel-ink: #E2FAFF;
+  --sel-edge: rgba(103,227,255,.55);
+  --hover-bg: linear-gradient(145deg, rgba(255,255,255,.13), rgba(255,255,255,.07));
+  --press-bg: linear-gradient(145deg, rgba(1,205,254,.22), rgba(1,205,254,.14));
+  --tile-sel-bg: linear-gradient(145deg, rgba(1,205,254,.26), rgba(1,205,254,.16));
+  --medallion-bg: linear-gradient(135deg, rgba(1,205,254,.38), rgba(185,103,255,.34) 58%, rgba(255,113,206,.16));
+}
+html[data-ui-theme="light"] {
+  --glass-bg: linear-gradient(145deg, rgba(255,255,255,.50) 0%, rgba(255,255,255,.30) 38%, rgba(255,255,255,.18) 100%);
+  --glass-strong-bg: linear-gradient(145deg, rgba(255,255,255,.58), rgba(255,255,255,.38) 55%, rgba(240,232,255,.30));
+  --glass-solid: #f1ebff;
+  --glass-strong-solid: #f6f1ff;
+  --glass-edge: rgba(255,255,255,.85);
+  --glass-spec: rgba(255,255,255,.95);
+  --glass-shadow: 0 14px 32px rgba(96,52,190,.16), 0 3px 10px rgba(96,52,190,.08), inset 0 1px 0 rgba(255,255,255,.95), inset 0 0 0 1px rgba(255,255,255,.35), inset 0 -10px 20px rgba(255,255,255,.16);
+  --capsule-bg: linear-gradient(145deg, rgba(255,255,255,.55), rgba(255,255,255,.32) 60%, rgba(255,255,255,.20));
+  --nav-ink: #3A2166;
+  --delta-bg: linear-gradient(135deg, rgba(255,255,255,.68), rgba(255,255,255,.42));
+  --delta-ink: #0B6B4F;
+  /* Day selection (whisper tint): cyan .34/.24 over the lavender sky
+     ≈ #A5DFF8; midnight ink #1A0B36 on it ≈ 10.8:1. Hover = white
+     glass brightening only. Tile tint ≈ #AEE9FB, --text on it ≈ 10.6:1. */
+  --sel-bg: linear-gradient(145deg, rgba(1,205,254,.36), rgba(1,205,254,.26));
+  --sel-bg-hover: linear-gradient(145deg, rgba(1,205,254,.42), rgba(1,205,254,.31));
+  --sel-ink: #1A0B36;
+  --sel-edge: rgba(0,122,153,.55);
+  --hover-bg: linear-gradient(145deg, rgba(255,255,255,.62), rgba(255,255,255,.40));
+  --press-bg: linear-gradient(145deg, rgba(1,205,254,.28), rgba(1,205,254,.18));
+  --tile-sel-bg: linear-gradient(145deg, rgba(1,205,254,.30), rgba(1,205,254,.20));
+  --medallion-bg: linear-gradient(135deg, rgba(1,205,254,.42), rgba(185,103,255,.30) 58%, rgba(255,113,206,.14));
+}
+/* Layer 3 — vapor glass surfaces */
+.glass-panel {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(24px) saturate(1.75) brightness(1.07);
+  backdrop-filter: blur(24px) saturate(1.75) brightness(1.07);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  border-radius: 20px; position: relative;
+}
+.glass-panel::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
+  background: linear-gradient(180deg, var(--glass-spec) 0%, transparent 18%), linear-gradient(115deg, rgba(255,113,206,.14) 0%, rgba(1,205,254,.20) 36%, rgba(185,103,255,.12) 52%, transparent 68%);
+  opacity: .45;
+}
+.glass-panel > * { position: relative; z-index: 1; }
+.glass-capsule {
+  background: var(--capsule-bg);
+  -webkit-backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
+  backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
+  border: 1px solid var(--glass-edge); border-radius: 999px;
+  box-shadow: 0 12px 28px rgba(15,4,44,.22), inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.14), inset 0 -8px 18px rgba(185,103,255,.07);
+  position: relative;
+}
+/* ——— QUIET PANELS (phase 2) — the content-surface family under the
+   Apple governance: mostly-opaque, barely-tinted panels in the .slab
+   lineage, calmed for the light sky — soft border, soft shadow, no
+   heavy gradient slab feel. Shells and section panels use this; dense
+   rows/tables inside stay fully opaque. */
+.quiet-panel {
+  background: linear-gradient(180deg, var(--slab-t1), var(--slab-t2) 55%, var(--slab-t3));
+  -webkit-backdrop-filter: blur(20px) saturate(1.6) brightness(1.06);
+  backdrop-filter: blur(20px) saturate(1.6) brightness(1.06);
+  border: 1px solid var(--panel-edge, var(--glass-edge));
+  box-shadow: inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 16px 28px -18px rgba(255,255,255,.38), inset 0 -12px 24px rgba(185,103,255,.07), 0 10px 26px var(--panel-shadow);
+  border-radius: 18px;
+  position: relative;
+}
+.quiet-panel::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.14) 0%, transparent 22%), linear-gradient(115deg, rgba(255,113,206,.05) 0%, rgba(1,205,254,.08) 38%, transparent 65%);
+}
+.quiet-panel > * { position: relative; z-index: 1; }
+.quiet-panel.quiet-alt { background: linear-gradient(180deg, var(--slabz-1), var(--slabz-2) 55%, var(--slabz-3)); }
+.glass-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--delta-bg); color: var(--delta-ink);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6); backdrop-filter: blur(16px) saturate(1.6);
+  border: 1px solid var(--glass-edge); border-radius: 999px;
+  box-shadow: 0 10px 22px rgba(15,4,44,.22), inset 0 1px 0 var(--glass-spec);
+  padding: 6px 12px; font-size: 12.5px; font-weight: 800; white-space: nowrap;
+}
+/* The floating chart price-callout pill was REMOVED (phase 2, owner:
+   it duplicated the hero total and could show a stale snapshot
+   value). Chart tooltips carry the number on demand. */
+/* ——— Launcher sub-nav (Deel-style) ——— */
+.launcher-scrim { position: fixed; inset: 0; z-index: 85; background: transparent; }
+.launcher-panel {
+  background: var(--glass-strong-bg);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) brightness(1.06);
+  backdrop-filter: blur(28px) saturate(1.8) brightness(1.06);
+  border: 1px solid var(--glass-edge); border-radius: 24px;
+  box-shadow: 0 22px 48px rgba(15,4,44,.28), inset 0 1px 0 var(--glass-spec);
+  padding: 16px; position: relative; z-index: 86; overflow: hidden;
+}
+.launcher-panel::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
+  background: linear-gradient(180deg, var(--glass-spec) 0%, transparent 16%), linear-gradient(115deg, rgba(255,113,206,.10) 0%, rgba(1,205,254,.16) 38%, rgba(185,103,255,.10) 55%, transparent 70%);
+  opacity: .5;
+}
+.launcher-panel > * { position: relative; z-index: 1; }
+/* Close control: a clear-glass pill in the header baseline (phase 2 —
+   the floating corner circle-X is gone). ≥44px target. */
+.launcher-close {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: auto; flex: none;
+  min-height: 44px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(18px) saturate(1.65); backdrop-filter: blur(18px) saturate(1.65);
+  border: 1px solid var(--glass-edge); color: var(--text);
+  font-family: inherit; font-size: 13px; font-weight: 700;
+  box-shadow: inset 0 1px 0 var(--glass-spec);
+  transition: background .15s ease, border-color .15s ease;
+}
+.launcher-close:hover { background: var(--hover-bg); }
+.launcher-close:active { background: var(--press-bg); }
+.launcher-desktop { width: min(720px, 100%); margin: 10px auto 16px; }
+.launcher-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.launcher-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.launcher-tile {
+  display: flex; flex-direction: column; gap: 10px; text-align: left; cursor: pointer;
+  min-height: 44px; border-radius: 18px; padding: 16px;
+  background: linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.05));
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-spec), 0 6px 16px rgba(15,4,44,.08);
+  color: var(--text); font-family: inherit;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.launcher-tile:hover { background: linear-gradient(145deg, rgba(255,255,255,.22), rgba(255,255,255,.09)); box-shadow: inset 0 1px 0 var(--glass-spec), 0 6px 16px rgba(15,4,44,.08); }
+.launcher-tile:active { background: var(--press-bg); }
+.launcher-tile:focus-visible { box-shadow: inset 0 1px 0 var(--glass-spec), 0 6px 16px rgba(15,4,44,.08); }
+.launcher-tile .lt-ic {
+  width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--medallion-bg); border: 1px solid var(--glass-edge); color: var(--text);
+  box-shadow: inset 0 1px 0 var(--glass-spec), 0 4px 10px rgba(15,4,44,.14);
+}
+.launcher-tile .lt-ic svg { width: 26px; height: 26px; }
+.launcher-tile .lt-name { font-size: 16.5px; font-weight: 800; letter-spacing: -.01em; }
+.launcher-tile .lt-desc { font-size: 13px; line-height: 1.45; color: var(--dim); font-weight: 500; }
+/* Current surface: soft translucent cyan tint only — no fill swap */
+.launcher-tile[aria-current="page"] { background: var(--tile-sel-bg); border-color: var(--sel-edge); box-shadow: inset 0 1px 0 var(--glass-spec), inset 2px 0 0 rgba(1,205,254,.55), 0 6px 16px rgba(15,4,44,.08); }
+.launcher-tile[aria-current="page"]:hover { background: var(--sel-bg-hover); }
+@media (max-width: 767px) {
+  .launcher-panel.launcher-mobile {
+    position: fixed; left: 12px; right: 12px; bottom: calc(104px + env(safe-area-inset-bottom, 0px)); z-index: 88;
+    max-height: 62vh; overflow-y: auto;
+  }
+  .launcher-grid, .launcher-grid.cols-2 { grid-template-columns: 1fr; }
+  .launcher-tile { flex-direction: row; align-items: center; }
+  .launcher-tile .lt-ic { width: 44px; height: 44px; font-size: 21px; flex: none; }
+}
+/* ——— Graded slabs (fan + detail) ———
+   Portrait clear case, grader-matched label strip on top, the FULL
+   real card inside. NOTHING else is printed on the case — no cert
+   number, no price, ever. */
+.gslab {
+  position: relative; border-radius: 15px; padding: 9px; display: flex; flex-direction: column;
+  background: linear-gradient(150deg, rgba(255,255,255,.34), rgba(255,255,255,.10) 55%, rgba(255,255,255,.20));
+  box-shadow: 0 26px 48px rgba(10,2,34,.30), inset 0 0 0 2px rgba(255,255,255,.55), inset 0 0 0 5px rgba(255,255,255,.14), inset 0 2px 3px rgba(255,255,255,.85);
+  border: 1px solid rgba(255,255,255,.65); overflow: hidden; text-align: left; font-family: inherit; cursor: pointer;
+}
+.gslab .gslab-art { flex: none; width: 100%; aspect-ratio: 600 / 825; margin-top: 8px; border-radius: 5px; position: relative; overflow: hidden; background: #fff; box-shadow: inset 0 0 0 1px rgba(20,6,54,.10); }
+.gslab .gslab-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.gslab .gslab-art::after { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; background: linear-gradient(118deg, transparent 32%, rgba(255,255,255,.20) 47%, rgba(255,113,206,.10) 54%, transparent 68%); }
+.gslab .gslab-noart { flex: none; width: 100%; aspect-ratio: 600 / 825; margin-top: 8px; border-radius: 5px; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px; text-align: center; background: linear-gradient(160deg, var(--surface-alt), var(--surface-2)); box-shadow: inset 0 0 0 1px var(--hairline); color: var(--dim); }
+/* FIX 1 (phase 2): the label is a FIXED height — band + a name area
+   sized for exactly 2 lines + one set line — identical on every slab,
+   so no label can stretch its slab taller than its neighbours. The
+   character name clamps to 2 lines; the set line (set · # · variant)
+   is a single truncated line; the grade block never shrinks. */
+.glabel { border-radius: 8px 8px 5px 5px; overflow: hidden; position: relative; z-index: 1; display: flex; flex-direction: column; color: #1A0B36; flex: none; box-shadow: 0 1px 3px rgba(20,6,54,.22); width: 100%; height: 72px; }
+.glabel .band { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 10px; font-size: 7px; font-weight: 800; letter-spacing: .22em; white-space: nowrap; flex: none; }
+.glabel .band .b-sub { letter-spacing: .13em; opacity: .85; font-weight: 700; }
+.glabel .lrow { display: flex; align-items: center; gap: 8px; padding: 6px 10px 7px; flex: 1; min-height: 0; }
+.glabel .lrow > span:first-child { flex: 1 1 auto; min-width: 0; }
+.glabel .l-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12.5px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; }
+.glabel .l-set { display: block; font-size: 9.5px; font-weight: 700; color: #57477F; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.glabel .gnum-long { font-size: 12px !important; line-height: 1.15; white-space: normal; }
+.glabel .gblock { margin-left: auto; flex: none; text-align: center; line-height: 1; }
+.glabel .gword { display: block; font-size: 8px; font-weight: 800; letter-spacing: .12em; margin-bottom: 2px; }
+.glabel .gnum { display: block; font-size: 21px; font-weight: 800; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.gl-psa { background: linear-gradient(180deg, #FFFFFF, #EFE9FF); }
+.gl-psa .band { background: #C8102E; color: #FFFFFF; }
+.gl-psa .gword { color: #C8102E; }
+.gl-psa .gnum { color: #1A0B36; }
+.gl-cgc { background: linear-gradient(180deg, #FFFFFF, #E8EFFC); }
+.gl-cgc .band { background: linear-gradient(90deg, #0B2E6B, #1256A0); color: #DCEAFF; }
+.gl-cgc .gblock { background: linear-gradient(180deg, #1256A0, #0B2E6B); color: #FFFFFF; border-radius: 6px; padding: 5px 9px; box-shadow: inset 0 1px 0 rgba(255,255,255,.35); }
+.gl-cgc .gnum { font-size: 19px; }
+.gl-bgs { background: linear-gradient(165deg, #F5F5F7, #C6C7D0 48%, #ECECF0 72%, #B2B3BE); }
+.gl-bgs .band { background: rgba(255,255,255,.45); color: #33303E; box-shadow: inset 0 -2px 0 #C9962E; }
+.gl-bgs .gblock { background: linear-gradient(180deg, #F2D67C, #C9962E); color: #241703; border-radius: 6px; padding: 5px 9px; box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 2px 6px rgba(120,84,10,.35); }
+.gl-bgs .gword { color: #6B4E08; }
+.gl-bgs .gnum { font-size: 19px; }
+/* Home slab fan — UNIFORM GEOMETRY (Oct 13 fix): every case in the
+   fan gets IDENTICAL outer dimensions. Width is locked (200px
+   desktop), total height is locked by a fixed aspect-ratio on the
+   case itself (200:352 = padding 9+9 + label 72 + gap 8 + art
+   window 182×250.25 ≈ 348, rounded), the label block is the fixed
+   72px .glabel, and the art window is the fixed 600/825 aspect with
+   object-fit: cover — so a card's native image size/padding
+   (TCG 600×825 vs Scrydex 733×1024) can NEVER change case geometry,
+   and cover-crop never distorts. Tilts are transforms only; they
+   do not change layout size. Phone: both columns share the exact
+   same calc() width and the same aspect-ratio, so all four heights
+   are identical there too (staircase offset is margin, not size). */
+.slab-fan { display: flex; justify-content: center; align-items: flex-start; gap: 16px; padding: 6px 4px 10px; }
+.slab-fan .gslab { flex: 0 0 200px; width: 200px; aspect-ratio: 200 / 352; }
+.slab-fan .fan-0 { transform: translateY(-2px); z-index: 3; }
+.slab-fan .fan-1 { transform: rotate(-2.2deg) translateY(8px); z-index: 2; }
+.slab-fan .fan-2 { transform: rotate(2deg) translateY(8px); z-index: 2; }
+.slab-fan .fan-3 { transform: rotate(4deg) translateY(12px); z-index: 1; }
+@media (max-width: 767px) {
+  .slab-fan { flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .slab-fan .gslab, .slab-fan .fan-0, .slab-fan .fan-1, .slab-fan .fan-2, .slab-fan .fan-3 { flex: 0 0 calc(50% - 6px); width: calc(50% - 6px); aspect-ratio: 200 / 362; transform: none; padding: 7px; }
+  .slab-fan .fan-1 { margin-top: 22px; }
+  .slab-fan .fan-3 { margin-top: 22px; }
+  .slab-fan .glabel .l-name { font-size: 11px; }
+  .slab-fan .glabel .gnum { font-size: 17px; }
+}
+/* Layer 4 — Home TOWN BAND: a fixed window into the same town (the
+   TownBackground SVG, bottom-anchored), content scrolls above it,
+   soft fade at the top edge, no text or controls on the band. */
+.town-band {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 128px; z-index: 0;
+  overflow: hidden; pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, black 34%, black 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, black 34%, black 100%);
+}
+.town-band .town-bg { position: absolute; left: 0; right: 0; bottom: 0; top: auto; height: 100vh; }
+@media (max-width: 767px) { .town-band { height: 104px; } }
+/* ——— Mobile chrome: detached floating glass capsule + FAB sibling ——— */
+@media (max-width: 767px) {
+  .mobile-tab-bar {
+    left: 12px; right: 88px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    border-radius: 999px; padding: 6px;
+    background: var(--capsule-bg);
+    -webkit-backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
+    backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
+    border: 1px solid var(--glass-edge);
+    box-shadow: 0 14px 30px rgba(15,4,44,.26), inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.14);
+    overflow: visible;
+  }
+  .mobile-tab-bar button { min-height: 48px; border-radius: 999px; }
+  .mobile-tab-spacer { height: calc(118px + env(safe-area-inset-bottom, 0px)); }
+  .nav-scout-perch { position: absolute; top: -17px; right: 30px; z-index: 2; pointer-events: none; filter: drop-shadow(0 2px 0 rgba(26,11,54,.25)); animation: scoutBob 2.8s ease-in-out infinite; }
+  .show-mode-fab {
+    right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    width: 61px; height: 61px; min-width: 61px; min-height: 61px;
+    background: var(--capsule-bg); color: var(--nav-ink);
+    border: 1px solid var(--glass-edge);
+    -webkit-backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
+    backdrop-filter: blur(26px) saturate(1.8) brightness(1.07);
+    box-shadow: 0 14px 30px rgba(15,4,44,.24), inset 0 1px 0 var(--glass-spec), inset 0 0 0 1px rgba(255,255,255,.14);
+  }
+  .show-mode-fab-dot { border-color: var(--glass-strong-solid); }
+}
+@media (prefers-reduced-motion: reduce) { .nav-scout-perch { animation: none; } }
+/* Desktop top bar as floating capsule: inset from the edges, detached */
+.command-strip .glass-capsule { margin: 2px 8px 0; }
+
+/* ——— NAV STATE LANGUAGE (Oct 13 fix) — Apple whispers ———
+   Default: clear glass, quiet ink. HOVER: the glass itself brightens
+   a few points (--hover-bg) — no colour swap, no lift, no ring.
+   SELECTED ([aria-current="page"]): soft translucent cyan tint in
+   the glass (--sel-bg, alpha .20–.30 dark / .26–.36 light), bright
+   ink (--sel-ink), semibold, plus a cyan edge-light along the
+   bottom inset and a softened border (--sel-edge) — never a solid
+   fill. PRESSED: --press-bg, a touch deeper tint, still translucent.
+   The same language drives desktop pills, the mobile capsule and
+   (via the tokens) every segmented control using --sel-bg. */
+.nav-pill {
+  background: rgba(255,255,255,.04); color: var(--nav-ink);
+  border: 1px solid var(--glass-edge);
+  transition: background .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.nav-pill:hover { background: var(--hover-bg); color: var(--nav-ink); border-color: var(--glass-edge); }
+.nav-pill:active { background: var(--press-bg); }
+.nav-pill[aria-current="page"] {
+  background: var(--sel-bg); color: var(--sel-ink); border-color: var(--sel-edge); font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), inset 0 -2px 0 rgba(1,205,254,.45);
+}
+.nav-pill[aria-current="page"]:hover { background: var(--sel-bg-hover); color: var(--sel-ink); }
+.mobile-nav-btn {
+  color: var(--nav-ink); background: transparent; border-radius: 999px;
+  transition: background .16s ease, color .16s ease;
+}
+.mobile-nav-btn:hover { background: var(--hover-bg); }
+.mobile-nav-btn:active { background: var(--press-bg); }
+.mobile-nav-btn[aria-current="page"] {
+  background: var(--sel-bg); color: var(--sel-ink); font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), inset 0 -2px 0 rgba(1,205,254,.45);
+}
+.mobile-nav-btn[aria-current="page"]:hover { background: var(--sel-bg-hover); color: var(--sel-ink); }
+/* Detail slab: one deterministic spec — fixed 300px column width,
+   fixed 72px label + fixed-aspect art window (same geometry math
+   as the fan, at its own size), independent of native image size. */
+.holo-slab.gslab { width: 100%; box-sizing: border-box; }
+.slab-hover { transition: border-color .16s ease, background .16s ease; }
+.slab-hover:hover { border-color: var(--sel-edge); }
+/* Fallback ONLY where backdrop-filter is unavailable: glass surfaces
+   fall back to the solid tokens so text pairings hold. Where blur
+   exists (the normal case), no solid sits under the glass. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-panel, .glass-capsule, .launcher-close { background-color: var(--glass-solid); }
+  .launcher-panel { background-color: var(--glass-strong-solid); }
+  .quiet-panel, .slab, .town-readable { background-color: var(--glass-solid); }
+  .mobile-tab-bar, .show-mode-fab { background-color: var(--glass-solid); }
+}

@@ -11,6 +11,20 @@ export const cards = sqliteTable("cards", {
   cert: text("cert").notNull().unique(),
   vaultUsd: real("vault_usd"),
   checkedUsd: real("checked_usd"),
+  /* Cost basis (Remedies pass 1, Oct 13, 2026 — audit remedy P0-3):
+     what the owner actually paid, entered per card. NULL on every
+     card until he records one — the vault CSV cost column was blank,
+     so NOTHING is seeded and no allocation is ever invented. Drives
+     the per-card unrealized P&L and the portfolio cost summary. */
+  costBasisUsd: real("cost_basis_usd"),
+  costNote: text("cost_note"),
+  costDate: text("cost_date"),
+  /* Card art (Glass Vault phase 1, Oct 13, 2026): the REAL card image
+     for this exact printing, resolved per cert (see CARD_ART in
+     actions.ts). NULL for the 7 Japanese prints with no verified image
+     — actual card art or nothing, never a substitute printing and
+     never generated art. */
+  imageUrl: text("image_url"),
   advisorCall: text("advisor_call").notNull().default("HOLD"),
   advisorReason: text("advisor_reason").notNull().default(""),
   notes: text("notes").notNull().default(""),
@@ -257,6 +271,42 @@ export const committeeRecords = sqliteTable("committee_records", {
   liquidity: text("liquidity").notNull().default(""),
   rationale: text("rationale").notNull().default(""),
   createdAt: text("created_at").notNull().default(""),
+});
+
+/* Forecast Engine v1 (fc-v1): per-card value RANGES at 30/90/180 days,
+   computed ONLY from verified sold comps (see isForecastComp in
+   actions.ts — the verified flag plus the price_sources registry's
+   source-type rules). Every issued forecast is logged at issuance and
+   graded at its horizon; origin keeps live and backtest records apart
+   forever — the track record is always reported separately, never
+   blended. regime is 'pump_suspended' only on rows that record a
+   suspension decision context; suspended cards get NO forecast rows —
+   their state is derived at read time from pumpFor(). */
+export const cardForecasts = sqliteTable("card_forecasts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  cert: text("cert").notNull(),
+  issuedAt: text("issued_at").notNull(),
+  horizonDays: integer("horizon_days").notNull(),
+  rangeLow: real("range_low").notNull(),
+  rangeHigh: real("range_high").notNull(),
+  midpoint: real("midpoint").notNull(),
+  confidence: text("confidence", { enum: ["A", "B", "C"] }).notNull(),
+  basisN: integer("basis_n").notNull().default(0),
+  basisLastSale: text("basis_last_sale").notNull().default(""),
+  liquidity: text("liquidity", { enum: ["deep", "moderate", "thin"] }).notNull().default("thin"),
+  regime: text("regime", { enum: ["normal", "pump_suspended"] }).notNull().default("normal"),
+  modelVersion: text("model_version").notNull().default("fc-v1"),
+  origin: text("origin", { enum: ["live", "backtest"] }).notNull().default("live"),
+  /* status: "superseded" (Remedies pass 1, Oct 13, 2026) marks a
+     forecast retired because its evidence basis was corrected — it is
+     excluded from every track-record statistic (neither hit nor
+     miss) and never blocks re-issuance. The SQL column carries no
+     CHECK constraint (see migration 0015), so this TS enum is the
+     only change the new value needs. */
+  status: text("status", { enum: ["open", "graded", "superseded"] }).notNull().default("open"),
+  realizedValue: real("realized_value"),
+  inRange: integer("in_range"),
+  gradedAt: text("graded_at"),
 });
 
 export const refreshLogs = sqliteTable("refresh_logs", {
