@@ -1,6 +1,6 @@
 import { defineAction, z, type ActionsModule, type Ctx } from "@hatch/space-sdk";
 import { asc, desc, eq } from "drizzle-orm";
-import * as schema from "./schema";
+import * as schema from "./schema.js";
 
 /* =====================================================================
    DEMO SEED DATA — SAMPLE / ILLUSTRATIVE ONLY
@@ -47,6 +47,11 @@ const SALES: { cert: string; date: string; price: number; source: string; desc: 
   { cert:"DEMO-1005", date:"2026-09-05", price:1430, source:"eBay sold", desc:"Demo sales evidence — sample record, not a real transaction." },
   { cert:"DEMO-1005", date:"2026-10-01", price:1505, source:"eBay sold", desc:"Demo sales evidence — sample record, not a real transaction." },
   { cert:"DEMO-1007", date:"2026-09-12", price:1085, source:"eBay sold", desc:"Demo sales evidence — sample record, not a real transaction." },
+  { cert:"DEMO-1001", date:"2026-05-09", price:4020, source:"Fanatics Collect", desc:"Demo sales evidence — sample record, not a real transaction." },
+  { cert:"DEMO-1001", date:"2026-08-21", price:4310, source:"eBay sold", desc:"Demo sales evidence — sample record, not a real transaction." },
+  { cert:"DEMO-1002", date:"2026-04-18", price:2180, source:"eBay sold", desc:"Demo sales evidence — sample record, not a real transaction." },
+  { cert:"DEMO-1002", date:"2026-06-02", price:2290, source:"eBay sold", desc:"Demo sales evidence — sample record, not a real transaction." },
+  { cert:"DEMO-1002", date:"2026-07-19", price:2335, source:"Fanatics Collect", desc:"Demo sales evidence — sample record, not a real transaction." },
 ];
 
 async function ensureSeed(ctx: Ctx) {
@@ -111,6 +116,78 @@ const WATCH_WC: typeof WATCH = [
    private deployment's target list and price research are not included. */
 const WATCH_VENDING: typeof WATCH = [
 ];
+
+/* ——— Card art (Glass Vault) ———
+   VERIFIED real card images for the demo collection, keyed by the
+   DEMO- certs. Every URL was checked HTTP 200 + image content type
+   and its identity confirmed against the Pokémon TCG API by set +
+   collector number for the exact printing the demo card names.
+   Cards without a verified image keep image_url NULL — actual card
+   art or nothing, never a substitute printing and never generated
+   art. Backfill is idempotent: only rows where image_url IS NULL
+   are written. DEMO-1010 (Mew ex SIR, Pokémon 151 #216) is
+   deliberately absent: that SIR exists only as the Japanese 151
+   printing — the English set has no SIR Mew ex — the TCG CDN 404s
+   it and alternate CDNs serve a card-back placeholder, so it stays
+   NULL like any unverifiable printing. */
+const CARD_ART: Record<string, string> = {
+  "DEMO-1001": "https://images.pokemontcg.io/neo1/9_hires.png",
+  "DEMO-1002": "https://images.pokemontcg.io/base1/4_hires.png",
+  "DEMO-1003": "https://images.pokemontcg.io/swsh7/215_hires.png",
+  "DEMO-1004": "https://images.pokemontcg.io/base1/58_hires.png",
+  "DEMO-1005": "https://images.pokemontcg.io/sv3pt5/199_hires.png",
+  "DEMO-1006": "https://images.pokemontcg.io/swsh8/271_hires.png",
+  "DEMO-1007": "https://images.pokemontcg.io/base1/2_hires.png",
+  "DEMO-1008": "https://images.pokemontcg.io/base1/15_hires.png",
+  "DEMO-1009": "https://images.pokemontcg.io/swsh7/217_hires.png",
+  "DEMO-1011": "https://images.pokemontcg.io/sv8pt5/167_hires.png",
+  "DEMO-1012": "https://images.pokemontcg.io/swsh6/224_hires.png",
+  "DEMO-SOLD-0203": "https://images.pokemontcg.io/sv2/203_hires.png",
+  "DEMO-TRADED-0201": "https://images.pokemontcg.io/sv3pt5/201_hires.png",
+};
+async function ensureCardArt(ctx: Ctx) {
+  const db = ctx.db<typeof schema>();
+  const rows = await db.select().from(schema.cards);
+  for (const r of rows as any[]) {
+    const url = CARD_ART[r.cert as string];
+    if (url && (r.imageUrl == null)) {
+      await db.update(schema.cards).set({ imageUrl: url }).where(eq(schema.cards.id, r.id));
+    }
+  }
+}
+
+/* ——— Demo forecast seed (SAMPLE DATA) ———
+   A small set of illustrative forecast rows for two demo cards, so
+   the Forecast block and the Growth track-record panel render with
+   content out of the box. These rows are SAMPLE DATA like every
+   other demo record — the demo UI labels its forecast surfaces
+   "Sample data" — and the ranges are plausible illustrations
+   around the demo cards' seeded sales, not engine output. The real
+   Forecast Engine (fc-v1) also runs inside refreshPrices in this
+   build and will grade / supersede / re-issue from the demo sales
+   evidence on file whenever a refresh runs. Seeding is one-time:
+   it only fills an empty card_forecasts table. */
+async function ensureDemoForecasts(ctx: Ctx) {
+  const db = ctx.db<typeof schema>();
+  try {
+    const existing = await db.select().from(schema.cardForecasts).limit(1);
+    if (existing.length > 0) return;
+    const rows: any[] = [
+      // DEMO-1002 Charizard-Holo (Base Set #4, PSA 9) — live, open.
+      { cert: "DEMO-1002", issuedAt: "2026-10-08", horizonDays: 30, rangeLow: 2250, rangeHigh: 2620, midpoint: 2435, confidence: "B", basisN: 5, basisLastSale: "2026-09-20", liquidity: "moderate", regime: "normal", modelVersion: FC_MODEL_VERSION, origin: "live", status: "open", realizedValue: null, inRange: null, gradedAt: null },
+      { cert: "DEMO-1002", issuedAt: "2026-10-08", horizonDays: 90, rangeLow: 2180, rangeHigh: 2760, midpoint: 2470, confidence: "B", basisN: 5, basisLastSale: "2026-09-20", liquidity: "moderate", regime: "normal", modelVersion: FC_MODEL_VERSION, origin: "live", status: "open", realizedValue: null, inRange: null, gradedAt: null },
+      { cert: "DEMO-1002", issuedAt: "2026-10-08", horizonDays: 180, rangeLow: 2050, rangeHigh: 2950, midpoint: 2500, confidence: "B", basisN: 5, basisLastSale: "2026-09-20", liquidity: "moderate", regime: "normal", modelVersion: FC_MODEL_VERSION, origin: "live", status: "open", realizedValue: null, inRange: null, gradedAt: null },
+      // DEMO-1001 Lugia-Holo (Neo Genesis #9, PSA 10) — live, open.
+      { cert: "DEMO-1001", issuedAt: "2026-10-08", horizonDays: 30, rangeLow: 4280, rangeHigh: 4760, midpoint: 4520, confidence: "C", basisN: 4, basisLastSale: "2026-09-28", liquidity: "thin", regime: "normal", modelVersion: FC_MODEL_VERSION, origin: "live", status: "open", realizedValue: null, inRange: null, gradedAt: null },
+      { cert: "DEMO-1001", issuedAt: "2026-10-08", horizonDays: 90, rangeLow: 4150, rangeHigh: 4950, midpoint: 4550, confidence: "C", basisN: 4, basisLastSale: "2026-09-28", liquidity: "thin", regime: "normal", modelVersion: FC_MODEL_VERSION, origin: "live", status: "open", realizedValue: null, inRange: null, gradedAt: null },
+      { cert: "DEMO-1001", issuedAt: "2026-10-08", horizonDays: 180, rangeLow: 3980, rangeHigh: 5180, midpoint: 4580, confidence: "C", basisN: 4, basisLastSale: "2026-09-28", liquidity: "thin", regime: "normal", modelVersion: FC_MODEL_VERSION, origin: "live", status: "open", realizedValue: null, inRange: null, gradedAt: null },
+      // Backtest (replayed history — always reported separately): one hit, one miss.
+      { cert: "DEMO-1002", issuedAt: "2026-08-15", horizonDays: 30, rangeLow: 2150, rangeHigh: 2650, midpoint: 2400, confidence: "C", basisN: 3, basisLastSale: "2026-08-15", liquidity: "thin", regime: "normal", modelVersion: FC_MODEL_VERSION, origin: "backtest", status: "graded", realizedValue: 2410, inRange: 1, gradedAt: "2026-09-20" },
+      { cert: "DEMO-1002", issuedAt: "2026-06-02", horizonDays: 90, rangeLow: 1900, rangeHigh: 2250, midpoint: 2075, confidence: "C", basisN: 3, basisLastSale: "2026-06-02", liquidity: "thin", regime: "normal", modelVersion: FC_MODEL_VERSION, origin: "backtest", status: "graded", realizedValue: 2410, inRange: 0, gradedAt: "2026-09-20" },
+    ];
+    for (const r of rows) await db.insert(schema.cardForecasts).values(r);
+  } catch { /* forecasts table just migrated — next read retries */ }
+}
 
 async function ensureSnapshots(ctx: Ctx) {
   const db = ctx.db<typeof schema>();
@@ -1313,8 +1390,16 @@ const cardOut = z.object({
   advisorCall: z.string(), advisorReason: z.string(), notes: z.string(), status: z.string(),
   soldPrice: z.number().nullable(), soldDate: z.string().nullable(), lastChecked: z.string().nullable(),
   popInfo: z.string().nullable(), era: z.string(),
-});
-const saleOut = z.object({ id: z.number(), cardCert: z.string(), saleDate: z.string(), price: z.number(), source: z.string(), description: z.string(), verified: z.boolean() });
+  /* Cost basis + unrealized P&L (Remedies pass 1 — audit remedy P0-3).
+     costBasisUsd is null until the owner records what they paid; P&L is
+     computed against the card's current official value and is null
+     whenever either side is missing. */
+  costBasisUsd: z.number().nullable(), costNote: z.string().nullable(), costDate: z.string().nullable(),
+  unrealizedPlUsd: z.number().nullable(), unrealizedPlPct: z.number().nullable(),
+  /* Real card art URL for this exact printing (Glass Vault phase 1) —
+     null when no verified image exists for the printing. */
+  imageUrl: z.string().nullable(),
+});const saleOut = z.object({ id: z.number(), cardCert: z.string(), saleDate: z.string(), price: z.number(), source: z.string(), description: z.string(), verified: z.boolean() });
 const watchOut = z.object({ id: z.number(), name: z.string(), kind: z.string(), priceContext: z.string(), thesis: z.string(), actionRule: z.string(), lastChecked: z.string().nullable(), status: z.string(), sortOrder: z.number(), scoutId: z.string().nullable() });
 const snapshotOut = z.object({ id: z.number(), snapshotDate: z.string(), totalUsd: z.number(), pricedCount: z.number(), note: z.string() });
 const scoutOut = z.object({ id: z.number(), scoutId: z.string(), name: z.string(), pokemon: z.string(), emoji: z.string(), territory: z.string(), statusLine: z.string(), lastChecked: z.string().nullable(), findsCount: z.number(), lastSweepAt: z.string().nullable(), lastSweepCandidates: z.number(), lastSweepFinds: z.number(), lastSweepLabel: z.string() });
@@ -1339,6 +1424,20 @@ const paperPosOut = z.object({ id: z.number(), scoutId: z.string(), cardName: z.
 const indexOut = z.object({ name: z.string(), value: z.number(), note: z.string(), points: z.array(z.object({ date: z.string(), value: z.number() })) });
 const spreadOut = z.object({ key: z.string(), name: z.string(), gradeLabel: z.string(), bestAsk: z.number().nullable(), askSource: z.string(), highestBid: z.number().nullable(), bidSource: z.string(), lastSale: z.number().nullable(), saleSource: z.string(), spreadPct: z.number().nullable(), warning: z.string() });
 const exitOut = z.object({ id: z.number(), cert: z.string(), cardName: z.string(), title: z.string(), description: z.string(), suggestedPrice: z.number().nullable(), priceSource: z.string(), status: z.string(), salePrice: z.number().nullable(), feeEstimate: z.number().nullable(), netUsd: z.number().nullable(), soldDate: z.string().nullable(), createdAt: z.string() });
+const costSummaryOut = z.object({ cardsWithCost: z.number(), totalCostUsd: z.number(), currentValueOfCostedUsd: z.number(), unrealizedPlUsd: z.number(), unrealizedPlPct: z.number().nullable() });
+const forecastItemOut = z.object({ horizonDays: z.number(), rangeLow: z.number(), rangeHigh: z.number(), midpoint: z.number(), confidence: z.string(), basisN: z.number(), basisLastSale: z.string(), liquidity: z.string(), issuedAt: z.string() });
+const cardForecastOut = z.object({ cert: z.string(), state: z.enum(["open", "insufficient", "pump_suspended"]), pumpReason: z.string().nullable(), locked: z.boolean(), keptValue: z.number().nullable(), horizons: z.array(forecastItemOut) });
+const fcOriginRecordOut = z.object({ issued: z.number(), graded: z.number(), superseded: z.number(), inRangePct: z.number().nullable(), meanRangeWidthPct: z.number().nullable(), byHorizon: z.array(z.object({ horizonDays: z.number(), issued: z.number(), graded: z.number(), inRangePct: z.number().nullable() })), byConfidence: z.array(z.object({ confidence: z.string(), issued: z.number(), graded: z.number(), inRangePct: z.number().nullable() })) });
+const trackRecordOut = z.object({ live: fcOriginRecordOut, backtest: fcOriginRecordOut, coverage: z.object({ totalCards: z.number(), cardsForecast: z.number(), cardsEligible: z.number(), pumpSuspended: z.number(), insufficient: z.number() }) });
+const inspectSalesRowOut = z.object({ id: z.number(), cardCert: z.string(), saleDate: z.string(), price: z.number(), source: z.string(), verified: z.boolean(), descLength: z.number(), hasUrl: z.boolean(), isComp: z.boolean() });
+const inspectSalesFullRowOut = z.object({ id: z.number(), cardCert: z.string(), saleDate: z.string(), price: z.number(), source: z.string(), verified: z.boolean(), description: z.string(), isComp: z.boolean() });
+const inspectPerCertOut = z.object({ cert: z.string(), compIds: z.array(z.number()), basisN: z.number(), eligible: z.boolean(), confidence: z.string().nullable(), liquidity: z.string().nullable(), latestCompDate: z.string().nullable() });
+const inspectBacktestPerCertOut = z.object({ cert: z.string(), seeded: z.number(), inRange: z.number() });
+const inspectBacktestOut = z.object({ seededForecasts: z.number(), gradedForecasts: z.number(), inRangeCount: z.number(), inRangePct: z.number().nullable(), perCert: z.array(inspectBacktestPerCertOut) });
+const inspectSalesEvidenceResponse = z.object({ ok: z.literal(true), rows: z.array(inspectSalesRowOut), fullRows: z.array(inspectSalesFullRowOut), perCert: z.array(inspectPerCertOut), backtestSimulation: inspectBacktestOut.nullable() });
+const dedupeGroupOut = z.object({ keepId: z.number(), deleteIds: z.array(z.number()), cert: z.string(), price: z.number(), saleDate: z.string() });
+const dedupeSalesEvidenceResponse = z.object({ ok: z.boolean(), error: z.string().optional(), groupIndex: z.number().nullable().optional(), dryRun: z.boolean().optional(), salesBefore: z.number().optional(), salesAfter: z.number().optional(), groups: z.array(dedupeGroupOut).optional(), totalToDelete: z.number().optional(), deletedTotal: z.number().optional(), deletedIds: z.array(z.number()).optional() });
+const excludeKeptValueResponse = z.object({ ok: z.boolean(), error: z.string().optional(), failedIds: z.array(z.number()).optional(), updated: z.number().optional(), supersededForecasts: z.number().optional(), salesTotal: z.number().optional() });
 const lineageWatchOut = z.object({ id: z.number(), cert: z.string(), label: z.string(), relation: z.string(), note: z.string(), createdAt: z.string() });
 const lineageEventOut = z.object({ id: z.number(), cert: z.string(), eventDate: z.string(), eventType: z.string(), venue: z.string(), price: z.number().nullable(), sourceLabel: z.string(), linkUrl: z.string().nullable(), verified: z.boolean(), note: z.string() });
 
@@ -1385,6 +1484,254 @@ const scanSlabResponse = z.object({
   matches: z.array(scanMatchOut),
   message: z.string(),
 });
+function evidenceSourceFamily(source: string): string {
+  const s = (source ?? "").toLowerCase();
+  if (s.includes("owner-kept") || s.includes("owner kept")) return "owner-kept";
+  if (s.includes("fanatics")) return "fanatics collect";
+  if (s.includes("pricecharting")) return s.includes("ebay") ? "ebay via pricecharting" : "pricecharting";
+  if (s.includes("goldin")) return "goldin";
+  if (s.includes("cardtrack")) return "cardtrack";
+  if (s.includes("pokeprices")) return "pokeprices";
+  if (s.includes("sports card investor")) return "sports card investor";
+  if (s.includes("pokeinvesting")) return "pokeinvesting";
+  if (s.includes("private sale")) return "private sale";
+  if (s.includes("tcgplayer")) return "tcgplayer";
+  if (s.includes("mercari")) return "mercari";
+  if (s.includes("yahoo")) return "yahoo japan";
+  if (s.includes("ebay")) return "ebay";
+  if (s.includes("psa")) return "psa";
+  return s.replace(/[^a-z0-9]+/g, " ").trim() || "unknown";
+}
+function evidenceSigKey(cert: string, price: number, saleDate: string, source: string): string {
+  return `${cert}|${price}|${saleDate}|${evidenceSourceFamily(source)}`;
+}
+async function evidenceSigSet(db: any): Promise<Set<string>> {
+  const rows = await db.select().from(schema.salesEvidence);
+  return new Set((rows as any[]).map((r: any) => evidenceSigKey(r.cardCert as string, r.price as number, r.saleDate as string, r.source as string)));
+}
+
+/* ——— Forecast Engine v1 (fc-v1) — deterministic statistics, NO AI ———
+   Per-card value RANGES at 30/90/180 days, computed ONLY from verified
+   sold comps, logged at issuance in card_forecasts, graded at horizon,
+   with live and backtest track records always reported separately.
+
+   EVIDENCE HYGIENE — the classifier below REUSES the codebase's own
+   evidence classification, it does not invent a parallel one:
+   (1) sales_evidence.verified must be 1 — the same flag pumpFor(),
+       the Decision blocks and the chart series already key on
+       (verified=0 seller-reported prints never enter);
+   (2) the source-type rules of the price_sources registry (SOURCES
+       below) as mirrored by the client's saleType() labelling:
+       "Aggregator value" sources (PriceCharting, PSA estimates,
+       CardTrack, pokeprices, pokeinvesting) are supporting values,
+       not sold comps; "Active listing / ask" rows (asks, live
+       auctions, market-ask rows) are not sales; seller-reported /
+       unverified language anywhere in the record excludes it.
+   Approximation, deliberately conservative: the stored fields do not
+   carry a structured best-offer flag, so hidden-price best-offer
+   sales (the owner's eBay rule: struck-through price = a lower
+   offer was accepted and the true price is hidden) are excluded only
+   when the description itself flags the price as hidden / struck /
+   undisclosed; a best-offer sale whose accepted price IS the recorded
+   price (the recorded-price case) stays in, exactly as
+   the existing Decision/chart code treats it. Grade-reference rows
+   ("Market context" sources, "reference ~$" descriptions) are
+   references for OTHER grades, not sales of this card, and are out. */
+type ForecastSale = { cardCert: string; saleDate: string; price: number; source: string; description: string; verified: boolean };
+function isForecastComp(s: ForecastSale): boolean {
+  if (!s.verified) return false;
+  const src = (s.source ?? "").toLowerCase();
+  const t = `${src} ${s.description ?? ""}`.toLowerCase();
+  if (t.includes("seller-reported") || t.includes("seller reported") || t.includes("unverified")) return false;
+  if (src.includes("ask") || t.includes("active listing") || t.includes("live auction") || t.includes("not a sold comp")) return false;
+  if (src.includes("pricecharting") || src.includes("cardtrack") || t.includes("pricecharting") || t.includes("cardtrack")) return false;
+  if (t.includes("estimate") || t.includes("aggregator") || t.includes("pokeprices") || t.includes("pokeinvesting")) return false;
+  if (src.includes("market context") || t.includes("reference ~")) return false;
+  if ((t.includes("best-offer") || t.includes("best offer")) && (t.includes("hidden") || t.includes("struck") || t.includes("true price"))) return false;
+  return true;
+}
+
+const FC_HORIZONS = [30, 90, 180] as const;
+const FC_MODEL_VERSION = "fc-v1";
+function fcAddDays(iso: string, days: number): string { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); }
+function fcDayDiff(fromIso: string, toIso: string): number { return Math.round((new Date(`${toIso}T00:00:00Z`).getTime() - new Date(`${fromIso}T00:00:00Z`).getTime()) / 86400000); }
+function fcMedian(xs: number[]): number { const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 === 1 ? (s[m] ?? 0) : ((s[m - 1] ?? 0) + (s[m] ?? 0)) / 2; }
+function fcQuantile(sortedAsc: number[], q: number): number { if (sortedAsc.length === 0) return 0; const pos = (sortedAsc.length - 1) * q; const lo = Math.floor(pos); const hi = Math.ceil(pos); if (lo === hi) return sortedAsc[lo] ?? 0; const w = pos - lo; return (sortedAsc[lo] ?? 0) * (1 - w) + (sortedAsc[hi] ?? 0) * w; }
+const fcRound2 = (n: number): number => Math.round(n * 100) / 100;
+
+type FcComputed = { horizonDays: number; rangeLow: number; rangeHigh: number; midpoint: number; confidence: "A" | "B" | "C"; basisN: number; basisLastSale: string; liquidity: "deep" | "moderate" | "thin" };
+/* Issuance math, shared verbatim by live issuance and the backtest
+   walk (the backtest passes a historical asOf and only sales dated
+   on/before it can enter — fcCompute filters by date itself).
+   Eligibility: >= 3 verified comps in the trailing 180d AND the
+   latest no more than 90d old; otherwise null (insufficient signal).
+   Drift: median of the last 90d vs the prior 90d (fallback when a
+   window is sparse: second half vs first half of the 180d window by
+   date). Drift is applied DAMPED — each 30d step contributes half the
+   previous step's weight (0.5 + 0.25 + 0.125 + …) — and the total
+   applied drift is capped at ±25% (the cap the spec sets at 180d;
+   damping keeps shorter horizons far inside it). Range width comes
+   from the window's interquartile spread, widened by a liquidity
+   factor (fewer sales → wider) and by sqrt(t) horizon scaling, with a
+   6% half-width floor so even tight comps carry honest uncertainty. */
+function fcCompute(comps: { date: string; price: number }[], asOf: string): FcComputed[] | null {
+  const past = comps.filter(c => c.date <= asOf).slice().sort((a, b) => a.date.localeCompare(b.date));
+  const winStart = fcAddDays(asOf, -180);
+  const win = past.filter(c => c.date > winStart);
+  if (win.length < 3) return null;
+  const latest = win[win.length - 1]!.date;
+  const ageDays = fcDayDiff(latest, asOf);
+  if (ageDays > 90) return null;
+  const n = win.length;
+  const confidence: "A" | "B" | "C" = n >= 8 && ageDays <= 30 ? "A" : n >= 5 && ageDays <= 60 ? "B" : "C";
+  const liquidity: "deep" | "moderate" | "thin" = n >= 8 ? "deep" : n >= 5 ? "moderate" : "thin";
+  const d90 = fcAddDays(asOf, -90);
+  const last90 = win.filter(c => c.date > d90);
+  const prior90 = win.filter(c => c.date <= d90);
+  const base = fcMedian(last90.map(c => c.price));
+  let drift = 0;
+  if (last90.length >= 2 && prior90.length >= 2) {
+    const priorMed = fcMedian(prior90.map(c => c.price));
+    if (priorMed > 0) drift = fcMedian(last90.map(c => c.price)) / priorMed - 1;
+  } else if (win.length >= 4) {
+    const half = Math.floor(win.length / 2);
+    const firstMed = fcMedian(win.slice(0, half).map(c => c.price));
+    if (firstMed > 0) drift = fcMedian(win.slice(half).map(c => c.price)) / firstMed - 1;
+  }
+  const prices = win.map(c => c.price).sort((a, b) => a - b);
+  const medAll = fcMedian(prices);
+  let halfRel = medAll > 0 ? (fcQuantile(prices, 0.75) - fcQuantile(prices, 0.25)) / 2 / medAll : 0.15;
+  if (halfRel < 0.06) halfRel = 0.06;
+  const liqFactor = liquidity === "deep" ? 1 : liquidity === "moderate" ? 1.3 : 1.7;
+  return FC_HORIZONS.map(h => {
+    const steps = h / 30;
+    let geom = 0; for (let i = 1; i <= steps; i++) geom += Math.pow(0.5, i);
+    const applied = Math.max(-0.25, Math.min(0.25, drift * geom));
+    const mid = base * (1 + applied);
+    const hw = halfRel * liqFactor * Math.sqrt(h / 30);
+    return { horizonDays: h, rangeLow: fcRound2(Math.max(1, mid * (1 - hw))), rangeHigh: fcRound2(mid * (1 + hw)), midpoint: fcRound2(mid), confidence, basisN: n, basisLastSale: latest, liquidity };
+  });
+}
+
+/* One full forecast pass, run inside refreshPrices (the daily
+   refresh): (0) seed the backtest exactly once, (a) grade matured
+   open live forecasts, (b) issue fresh live forecasts. Returns a
+   one-line summary for the refresh log. Never touches official or
+   owner-kept values — locked cards are forecast on MARKET value
+   (their verified comps) and graded against the latest verified
+   comp, never against the kept figure. */
+async function runForecastEngine(ctx: Ctx): Promise<string> {
+  const db = ctx.db<typeof schema>();
+  const today = new Date().toISOString().slice(0, 10);
+  const cardRows = await db.select().from(schema.cards);
+  const active = (cardRows as any[]).filter(r => r.status === "active");
+  const salesRows = await db.select().from(schema.salesEvidence);
+  const salesPlain: ForecastSale[] = (salesRows as any[]).map((s: any) => ({ cardCert: s.cardCert as string, saleDate: s.saleDate as string, price: s.price as number, source: s.source as string, description: s.description as string, verified: s.verified !== 0 }));
+  const compsByCert = new Map<string, { date: string; price: number }[]>();
+  for (const s of salesPlain) {
+    if (!isForecastComp(s)) continue;
+    const arr = compsByCert.get(s.cardCert) ?? []; arr.push({ date: s.saleDate, price: s.price }); compsByCert.set(s.cardCert, arr);
+  }
+  for (const arr of compsByCert.values()) arr.sort((a, b) => a.date.localeCompare(b.date));
+  const pumpByCert = new Map<string, ReturnType<typeof pumpFor>>();
+  for (const c of active) pumpByCert.set(c.cert as string, pumpFor(c.cert as string, `${c.name} ${c.grader} ${c.grade}`, salesPlain as any[]));
+
+  // (0) BACKTEST SEED — first run only (idempotent: only when no
+  // backtest rows exist). Walk historical issue points through each
+  // qualifying card's sale history; at each point the forecast uses
+  // ONLY sales dated before that point, and grades against the first
+  // verified sale at/after the horizon date (skipped when none).
+  let backtestSeeded = 0;
+  const existingFc = await db.select().from(schema.cardForecasts);
+  if (!(existingFc as any[]).some(r => r.origin === "backtest")) {
+    for (const c of active) {
+      const comps = compsByCert.get(c.cert as string) ?? [];
+      if (comps.length < 6) continue;
+      const dates = [...new Set(comps.map(x => x.date))].sort();
+      for (let j = 1; j < dates.length; j++) {
+        const issuedAt = dates[j - 1]!;
+        const computed = fcCompute(comps.filter(x => x.date < dates[j]!), issuedAt);
+        if (!computed) continue;
+        for (const f of computed) {
+          const horizonDate = fcAddDays(issuedAt, f.horizonDays);
+          const realized = comps.find(x => x.date >= horizonDate);
+          if (!realized) continue;
+          await db.insert(schema.cardForecasts).values({ cert: c.cert as string, issuedAt, horizonDays: f.horizonDays, rangeLow: f.rangeLow, rangeHigh: f.rangeHigh, midpoint: f.midpoint, confidence: f.confidence, basisN: f.basisN, basisLastSale: f.basisLastSale, liquidity: f.liquidity, regime: "normal", modelVersion: FC_MODEL_VERSION, origin: "backtest", status: "graded", realizedValue: realized.price, inRange: realized.price >= f.rangeLow && realized.price <= f.rangeHigh ? 1 : 0, gradedAt: realized.date });
+          backtestSeeded++;
+        }
+      }
+    }
+  }
+
+  // (a) GRADE any open live forecast whose horizon has passed.
+  // Realized value: the card's current verified-comp value — for
+  // floating cards its official value; for owner-kept (locked) cards
+  // the latest verified comp value (never the kept figure).
+  let graded = 0;
+  const fcRows = await db.select().from(schema.cardForecasts);
+  for (const f of fcRows as any[]) {
+    if (f.origin !== "live" || f.status !== "open") continue;
+    if (fcAddDays(f.issuedAt as string, f.horizonDays as number) > today) continue;
+    const card: any = (cardRows as any[]).find(r => r.cert === f.cert);
+    let realized: number | null = null;
+    if (card && !OWNER_KEPT_CERTS.has(f.cert as string)) realized = effectiveOf(card);
+    if (realized == null) { const comps = compsByCert.get(f.cert as string) ?? []; realized = comps.length ? (comps[comps.length - 1]?.price ?? null) : null; }
+    if (realized == null) continue;
+    await db.update(schema.cardForecasts).set({ status: "graded", realizedValue: realized, inRange: realized >= (f.rangeLow as number) && realized <= (f.rangeHigh as number) ? 1 : 0, gradedAt: today }).where(eq(schema.cardForecasts.id, f.id));
+    graded++;
+  }
+
+  // (b) ISSUE fresh live forecasts — per card, per horizon: when none
+  // is open, when the last issue is more than 14 days old, or when a
+  // newer verified sale postdates the last issue. Pump-suspended
+  // cards (pumpFor level High) are NOT issued — their forecast state
+  // reads suspended at read time, with the pump factors as reason.
+  let issued = 0; const byConf = { A: 0, B: 0, C: 0 };
+  const openRows = (await db.select().from(schema.cardForecasts) as any[]).filter(r => r.origin === "live" && r.status === "open");
+  for (const c of active) {
+    const cert = c.cert as string;
+    if (pumpByCert.get(cert)?.level === "High") continue;
+    const comps = compsByCert.get(cert) ?? [];
+    const computed = fcCompute(comps, today);
+    if (!computed) continue;
+    for (const f of computed) {
+      const latestIssue = openRows.filter(r => r.cert === cert && r.horizonDays === f.horizonDays).map(r => r.issuedAt as string).sort().slice(-1)[0];
+      let need = !latestIssue;
+      if (latestIssue) {
+        if (fcDayDiff(latestIssue, today) > 14) need = true;
+        else if (comps.some(x => x.date > latestIssue)) need = true;
+      }
+      if (!need) continue;
+      await db.insert(schema.cardForecasts).values({ cert, issuedAt: today, horizonDays: f.horizonDays, rangeLow: f.rangeLow, rangeHigh: f.rangeHigh, midpoint: f.midpoint, confidence: f.confidence, basisN: f.basisN, basisLastSale: f.basisLastSale, liquidity: f.liquidity, regime: "normal", modelVersion: FC_MODEL_VERSION, origin: "live", status: "open", realizedValue: null, inRange: null, gradedAt: null });
+      issued++; byConf[f.confidence]++;
+    }
+  }
+  return ` Forecast engine (fc-v1, verified sold comps only): ${backtestSeeded > 0 ? `seeded ${backtestSeeded} backtest forecast(s) (one-time, graded against the first verified sale at/after each horizon); ` : ""}${graded} matured live forecast(s) graded; ${issued} live forecast(s) issued (confidence A ${byConf.A} · B ${byConf.B} · C ${byConf.C}). Pump-suspended and insufficient-signal cards were issued nothing — their states show on their detail pages.`;
+}
+
+/* Track record for one origin — live and backtest are ALWAYS built
+   from disjoint row sets and reported separately, never blended.
+   SUPERSEDED rows (Remedies pass 1, Oct 13, 2026) are excluded from
+   every statistic — a forecast retired because its evidence basis
+   was corrected is neither a hit nor a miss — and are surfaced only
+   as their own count so the Growth panel can footnote them. */
+function fcSummarizeOrigin(rows: any[]): { issued: number; graded: number; superseded: number; inRangePct: number | null; meanRangeWidthPct: number | null; byHorizon: { horizonDays: number; issued: number; graded: number; inRangePct: number | null }[]; byConfidence: { confidence: string; issued: number; graded: number; inRangePct: number | null }[] } {
+  const superseded = rows.filter(r => r.status === "superseded").length;
+  const live = rows.filter(r => r.status !== "superseded");
+  const gradedRows = live.filter(r => r.status === "graded");
+  const inR = gradedRows.filter(r => r.inRange === 1).length;
+  const pctOf = (sub: any[]): number | null => { const g = sub.filter(r => r.status === "graded"); if (g.length === 0) return null; return Math.round((g.filter(r => r.inRange === 1).length / g.length) * 1000) / 10; };
+  return {
+    issued: live.length,
+    graded: gradedRows.length,
+    superseded,
+    inRangePct: gradedRows.length ? Math.round((inR / gradedRows.length) * 1000) / 10 : null,
+    meanRangeWidthPct: live.length ? Math.round((live.reduce((s: number, r: any) => s + ((r.midpoint as number) > 0 ? ((r.rangeHigh as number) - (r.rangeLow as number)) / (r.midpoint as number) : 0), 0) / live.length) * 1000) / 10 : null,
+    byHorizon: FC_HORIZONS.map(h => { const sub = live.filter(r => r.horizonDays === h); return { horizonDays: h, issued: sub.length, graded: sub.filter(r => r.status === "graded").length, inRangePct: pctOf(sub) }; }),
+    byConfidence: ["A", "B", "C"].map(cf => { const sub = live.filter(r => r.confidence === cf); return { confidence: cf, issued: sub.length, graded: sub.filter(r => r.status === "graded").length, inRangePct: pctOf(sub) }; }),
+  };
+}
+
 function certCandidatesFrom(text: string | null | undefined): string[] {
   if (!text) return [];
   const found = text.match(/\d{6,10}/g) ?? [];
@@ -1398,7 +1745,8 @@ export const Actions = {
       cards: z.array(cardOut), sales: z.array(saleOut), watchlist: z.array(watchOut),
       snapshots: z.array(snapshotOut), scouts: z.array(scoutOut), deals: z.array(dealOut), ledger: z.array(ledgerOut), sources: z.array(sourceOut),
       sweeps: z.array(sweepOut), listings: z.array(listingOut), terminal: z.array(terminalOut),
-      totals: z.object({ officialTotal: z.number(), vaultSumPriced: z.number(), pricedCount: z.number(), totalCount: z.number(), activeCount: z.number(), psaCount: z.number(), cgcCount: z.number(), topHoldingName: z.string(), topHoldingValue: z.number(), topHoldingPct: z.number() }),
+      totals: z.object({ officialTotal: z.number(), vaultSumPriced: z.number(), pricedCount: z.number(), totalCount: z.number(), activeCount: z.number(), psaCount: z.number(), cgcCount: z.number(), topHoldingName: z.string(), topHoldingValue: z.number(), topHoldingPct: z.number(), costSummary: costSummaryOut }),
+      forecasts: z.array(cardForecastOut), trackRecord: trackRecordOut,
       logs: z.array(z.object({ id: z.number(), ranAt: z.string(), summary: z.string(), cardsChecked: z.number() })),
       v2: z.object({ alerts: z.array(alertOut), pops: z.array(popOut), pump: z.array(pumpOut), paper: z.array(paperOut), paperPositions: z.array(paperPosOut), indices: z.array(indexOut), spreads: z.array(spreadOut), exits: z.array(exitOut), lineageWatch: z.array(lineageWatchOut), lineageEvents: z.array(lineageEventOut), passedNames: z.array(z.string()), rocket: z.object({ findIntel: z.array(z.object({ dealId: z.number(), cardName: z.string(), severity: z.number(), points: z.array(z.string()) })), holdingFlags: z.array(z.object({ cert: z.string(), name: z.string(), heldValue: z.number(), bestAsk: z.number(), pctUnder: z.number() })) }), committee: z.array(z.object({ id: z.number(), dealId: z.number(), cardName: z.string(), score: z.number(), verdict: z.string(), bull: z.string(), bear: z.string(), liquidity: z.string(), rationale: z.string(), createdAt: z.string() })), milestones: z.array(z.object({ id: z.string(), label: z.string(), icon: z.string(), condition: z.string(), met: z.boolean(), evidence: z.string() })), journal: z.array(z.object({ scoutId: z.string(), title: z.string(), date: z.string(), body: z.string(), links: z.array(z.object({ label: z.string(), href: z.string() })) })) }),
     }),
@@ -1419,6 +1767,8 @@ export const Actions = {
       await ensureLivenessRepair(ctx);
       await ensureV2(ctx);
       await ensureLineage(ctx);
+      await ensureCardArt(ctx);
+      await ensureDemoForecasts(ctx);
       const db = ctx.db<typeof schema>();
       const watchRows = await db.select().from(schema.watchlist).orderBy(asc(schema.watchlist.sortOrder));
       const rows = await db.select().from(schema.cards).orderBy(desc(schema.cards.id));
@@ -1442,12 +1792,20 @@ export const Actions = {
         const k = canonicalListingKey(url);
         return !!k && (dismissedPassedKeys.has(k) || dismissedEndedKeys.has(k));
       };
-      const cards = rows.map((r: any) => ({
-        id: r.id, name: r.name, year: r.year, setName: r.setName, number: r.number, grader: r.grader, grade: r.grade, cert: r.cert,
-        vaultUsd: r.vaultUsd, checkedUsd: r.checkedUsd, effectiveUsd: (r.status === "sold" || r.status === "traded") ? r.soldPrice : effectiveOf(r),
-        advisorCall: r.advisorCall, advisorReason: r.advisorReason, notes: cleanNotes(r.notes), status: r.status,
-        soldPrice: r.soldPrice, soldDate: r.soldDate, lastChecked: r.lastChecked, popInfo: r.popInfo, era: r.era,
-      }));
+      const cards = rows.map((r: any) => {
+        const eff = (r.status === "sold" || r.status === "traded") ? r.soldPrice : effectiveOf(r);
+        const cost = (r.costBasisUsd as number | null) ?? null;
+        const pl = cost != null && eff != null ? Math.round((eff - cost) * 100) / 100 : null;
+        return {
+          id: r.id, name: r.name, year: r.year, setName: r.setName, number: r.number, grader: r.grader, grade: r.grade, cert: r.cert,
+          vaultUsd: r.vaultUsd, checkedUsd: r.checkedUsd, effectiveUsd: eff,
+          advisorCall: r.advisorCall, advisorReason: r.advisorReason, notes: cleanNotes(r.notes), status: r.status,
+          soldPrice: r.soldPrice, soldDate: r.soldDate, lastChecked: r.lastChecked, popInfo: r.popInfo, era: r.era,
+          costBasisUsd: cost, costNote: (r.costNote as string | null) ?? null, costDate: (r.costDate as string | null) ?? null,
+          unrealizedPlUsd: pl, unrealizedPlPct: pl != null && cost != null && cost > 0 ? Math.round((pl / cost) * 1000) / 10 : null,
+          imageUrl: (r.imageUrl as string | null) ?? CARD_ART[r.cert as string] ?? null,
+        };
+      });
       const active = cards.filter((c: any) => c.status === "active");
       const priced = active.filter((c: any) => c.effectiveUsd != null);
       const officialTotal = priced.reduce((s: number, c: any) => s + (c.effectiveUsd ?? 0), 0);
@@ -1571,6 +1929,42 @@ export const Actions = {
         const evo = (evoNames[s.scoutId] ?? [s.pokemon, s.pokemon + " ★", s.pokemon + " ★★", s.pokemon + " ★★★"])[stage] ?? s.pokemon;
         paperOutMap.set(s.scoutId, { scoutId: s.scoutId, bankroll: 10000, pnl, invested, winRate, finds: s.findsCount ?? pos.length, positions: pos.length, evolution: evo, stage });
       }
+      /* ——— Forecast Engine (fc-v1) read model ———
+         Current open live set per card (latest issue per horizon),
+         the card's forecast state (open / insufficient / pump-
+         suspended with the pump factors as the reason), and the
+         track record with live and backtest ALWAYS separate.
+         Issuance and grading happen in refreshPrices — this read
+         never issues, grades, or alters a value. */
+      let fcRowsAll: any[] = [];
+      try { fcRowsAll = await db.select().from(schema.cardForecasts); } catch { /* forecasts table just migrated */ }
+      const fcToday = new Date().toISOString().slice(0, 10);
+      const fcCompsByCert = new Map<string, { date: string; price: number }[]>();
+      for (const s of salesRows as any[]) {
+        const fs: ForecastSale = { cardCert: s.cardCert as string, saleDate: s.saleDate as string, price: s.price as number, source: s.source as string, description: s.description as string, verified: s.verified !== 0 };
+        if (!isForecastComp(fs)) continue;
+        const arr = fcCompsByCert.get(fs.cardCert) ?? []; arr.push({ date: fs.saleDate, price: fs.price }); fcCompsByCert.set(fs.cardCert, arr);
+      }
+      const openLiveRows = (fcRowsAll as any[]).filter(r => r.origin === "live" && r.status === "open");
+      const forecastsOut: any[] = (active as any[]).map((c: any) => {
+        const byH = new Map<number, any>();
+        for (const r of openLiveRows.filter(r => r.cert === c.cert)) {
+          const cur = byH.get(r.horizonDays as number);
+          if (!cur || (r.issuedAt as string) > (cur.issuedAt as string) || ((r.issuedAt as string) === (cur.issuedAt as string) && (r.id as number) > (cur.id as number))) byH.set(r.horizonDays as number, r);
+        }
+        const horizons = FC_HORIZONS.filter(h => byH.has(h)).map(h => { const r = byH.get(h); return { horizonDays: r.horizonDays as number, rangeLow: r.rangeLow as number, rangeHigh: r.rangeHigh as number, midpoint: r.midpoint as number, confidence: r.confidence as string, basisN: r.basisN as number, basisLastSale: r.basisLastSale as string, liquidity: r.liquidity as string, issuedAt: r.issuedAt as string }; });
+        const pump = pumpList.find((p: any) => p.cert === c.cert);
+        const locked = OWNER_KEPT_CERTS.has(c.cert as string);
+        const state = horizons.length > 0 ? "open" as const : pump?.level === "High" ? "pump_suspended" as const : "insufficient" as const;
+        return { cert: c.cert as string, state, pumpReason: state === "pump_suspended" ? ((pump?.factors ?? []).join(" · ") || null) : null, locked, keptValue: locked ? (c.effectiveUsd ?? null) : null, horizons };
+      });
+      const fcEligibleCount = (active as any[]).filter((c: any) => fcCompute(fcCompsByCert.get(c.cert as string) ?? [], fcToday) != null).length;
+      const trackRecord = {
+        live: fcSummarizeOrigin((fcRowsAll as any[]).filter(r => r.origin === "live")),
+        backtest: fcSummarizeOrigin((fcRowsAll as any[]).filter(r => r.origin === "backtest")),
+        coverage: { totalCards: (active as any[]).length, cardsForecast: forecastsOut.filter(f => f.state === "open").length, cardsEligible: fcEligibleCount, pumpSuspended: forecastsOut.filter(f => f.state === "pump_suspended").length, insufficient: forecastsOut.filter(f => f.state === "insufficient").length },
+      };
+
       const firstSnap = (snapRows as any[])[0];
       const portfolioPoints = (snapRows as any[]).map((s: any) => ({ date: s.snapshotDate, value: firstSnap && firstSnap.totalUsd > 0 ? Math.round((s.totalUsd / firstSnap.totalUsd) * 1000) / 10 : 100 }));
       const idxNote = "Base 100 at first honest data point (Sep 1, 2026 — demo baseline). Back-data is thin — category indices start at 100 today and accrue from refreshes; no history fabricated.";
@@ -1744,6 +2138,16 @@ export const Actions = {
       const ledgerDealKeys = new Set([...ledgerDealUrls].map(u => canonicalListingKey(u)));
       const ledgerListings: any[] = (listingRows as any[]).filter((l: any) => l.passed !== 1 && !isPicClickRow(l) && !(l.listingUrl && ledgerDealUrls.has(l.listingUrl)) && !(l.listingUrl && ledgerDealKeys.has(canonicalListingKey(l.listingUrl as string))) && !((l.status as string) !== "gone" && isDismissedKey(l.listingUrl as string | null))).map((l: any) => { const pctOfMarket = l.marketUsd != null && l.marketUsd > 0 ? Math.round((l.askingUsd / l.marketUsd) * 1000) / 10 : null; const discountPct = pctOfMarket != null ? Math.round((100 - pctOfMarket) * 10) / 10 : null; const tier = !l.listingUrl ? 0 : discountPct != null && discountPct >= 15 ? 1 : 2; const rawStatus = (l.status as string) || "live"; const status = l.listingUrl ? (rawStatus === "gone" ? "gone" : !l.lastVerifiedLiveAt ? "stale" : effectiveLiveStatus({ ...l, status: rawStatus }, readNowMs)) : rawStatus; return { id: l.id, source: "listing" as const, cardName: l.subjectName, gradeLabel: l.gradeLabel, askingUsd: l.askingUsd, marketUsd: l.marketUsd, discountPct, pctOfMarket, marketplace: l.marketplace, seller: l.seller ?? null, listingUrl: l.listingUrl, foundAt: l.foundAt, scoutId: l.scoutId, checkedDate: null, note: "", isExample: false, tier, status, firstFoundAt: l.firstFoundAt ?? l.foundAt ?? null, lastSeenAt: l.lastSweptAt ?? l.foundAt ?? null, prevAskingUsd: l.prevAskingUsd ?? null, subjectKey: l.subjectKey ?? null, targetGroup: targetGroupFor(l.subjectName as string, l.subjectKey ?? null, null), lastVerifiedLiveAt: l.lastVerifiedLiveAt ?? null, endedAt: l.endedAt ?? null, endedReason: l.endedReason ?? null, verifyMissStreak: l.verifyMissStreak ?? 0, lastCheckAt: l.lastCheckAt ?? null, endsAt: l.endsAt ?? null }; });
       const ledger = [...ledgerDeals, ...ledgerListings];
+      /* Cost summary (Remedies pass 1 — audit remedy P0-3): P&L over
+         ACTIVE cards that carry a recorded cost only. It is a
+         partial-coverage figure by construction — cards without a
+         cost on file contribute nothing to either side — and the
+         hero line that renders it says so. */
+      const costedCards = active.filter((c: any) => c.costBasisUsd != null && c.effectiveUsd != null);
+      const totalCostUsd = Math.round(costedCards.reduce((s: number, c: any) => s + (c.costBasisUsd as number), 0) * 100) / 100;
+      const currentValueOfCostedUsd = Math.round(costedCards.reduce((s: number, c: any) => s + (c.effectiveUsd as number), 0) * 100) / 100;
+      const unrealizedPlUsd = Math.round((currentValueOfCostedUsd - totalCostUsd) * 100) / 100;
+      const costSummary = { cardsWithCost: costedCards.length, totalCostUsd, currentValueOfCostedUsd, unrealizedPlUsd, unrealizedPlPct: costedCards.length > 0 && totalCostUsd > 0 ? Math.round((unrealizedPlUsd / totalCostUsd) * 1000) / 10 : null };
       return {
         cards,
         sales: salesRows.map((s: any) => ({ id: s.id, cardCert: s.cardCert, saleDate: s.saleDate, price: s.price, source: s.source, description: s.description, verified: s.verified !== 0 })),
@@ -1765,7 +2169,10 @@ export const Actions = {
           topHoldingName: top ? `${top.name} — ${top.grader} ${top.grade}` : "—",
           topHoldingValue: top?.effectiveUsd ?? 0,
           topHoldingPct: officialTotal > 0 && top ? Math.round(((top.effectiveUsd ?? 0) / officialTotal) * 1000) / 10 : 0,
+          costSummary,
         },
+        forecasts: forecastsOut,
+        trackRecord,
         logs: logRows.map((l: any) => ({ id: l.id, ranAt: l.ranAt.toISOString(), summary: l.summary, cardsChecked: l.cardsChecked })),
         v2,
       };
@@ -2034,6 +2441,27 @@ export const Actions = {
     },
   }),
 
+  updateCardCost: defineAction({
+    request: z.object({ cert: z.string(), costUsd: z.number().nonnegative().nullable(), note: z.string().max(500).nullable().optional(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const db = ctx.db<typeof schema>();
+      const rows = await db.select().from(schema.cards);
+      const row = rows.find((r: any) => r.cert === args.cert);
+      if (row) {
+        const clearing = args.costUsd == null;
+        await db.update(schema.cards).set({
+          costBasisUsd: args.costUsd,
+          costNote: clearing ? null : (args.note !== undefined ? args.note : ((row.costNote as string | null) ?? null)),
+          costDate: clearing ? null : (args.date !== undefined ? args.date : ((row.costDate as string | null) ?? null)),
+        }).where(eqId(row.id));
+      }
+      ctx.invalidateQueries();
+      return { ok: true as const };
+    },
+  }),
+
+
   refreshPrices: defineAction({
     request: z.object({}),
     response: z.object({ ok: z.literal(true), summary: z.string() }),
@@ -2069,7 +2497,18 @@ export const Actions = {
           await db.update(schema.scoutStatus).set({ lastChecked: today }).where(eq(schema.scoutStatus.id, s.id));
         }
       } catch { /* snapshot / scout stamp is best-effort alongside the log */ }
-      const refreshPrompt = "Research current market prices for this Pokemon graded-card portfolio using public web sources (PriceCharting, eBay sold, PSA, CardTrack). First call getPortfolio and work from its data: priority is unpriced cards, unverified estimates, and a rotating spot-check of priced cards; also re-check the acquisition watchlist prices and confirm the do-not-buy list is still at the top of its market. OFFICIAL VALUE POLICY: the portfolio's official number is COMP-BASED — for every card EXCEPT owner-kept locked values (the OWNER_KEPT_CERTS set in the server code), the checked price you report via saveRefreshFindings BECOMES that card's official value and moves the headline total, so report the price the verified comps actually support (Fanatics Collect / eBay sold primary; aggregator values labelled and never a sole source where sold comps exist). Do NOT override owner-kept values — report sales context only for those cards. SOURCE RULES (mandatory): label every figure with its source type — verified sold comp (Fanatics Collect, eBay sold), aggregator value (PriceCharting, PSA estimates, CardTrack), active listing / ask (Collektr, CardCodex, eBay listing pages), cert verification (PSA cert pages — never a price), or seller-reported / unverified. pokeprices.io is USE WITH CAUTION — never use it unlabeled or as a sole comp source. pokeinvesting.com is values / population ONLY (it lists no individual sales) — never cite it as a comp. Aggregator or single-source prints NEVER override verified sold comps or owner-kept values. For thin eras (e.g. Diamond & Pearl), only trust multiple confirmed PAID sales — flag any single-print spike as suspected manipulation, never as a price. SCOUT DUTY: also sweep live listings for watchlist targets and owned cards (eBay graded slabs, TCGplayer raw, Yahoo Japan / Mercari / eBay JP Japanese listings, sealed at MSRP). TERMINAL CENSUS: for every live listing you open for a tracked card (owned or watchlist) at ANY price, call saveMarketListing with its subjectKey (owned-<cert> / watch-<id> from getPortfolio's terminal data), the verbatim listing URL, asking price, market value, marketplace, seller and ships-from when shown. Save each under-market candidate (at least 15 percent under verified comp, or 8-15 percent for Tier 2) via saveScoutFind with marketplace, seller if shown, asking price, verified comp, date and scoutId. HARD LINK RULE: a find only PINS to the deal feed when saveScoutFind receives the real, reachable listing URL copied verbatim from the listing page — never construct, shorten or guess a listing URL. POSTING RULE: the server re-checks the listing at save time — if its checker cannot positively verify the listing live (bot-blocked), saveScoutFind returns pinned=false and the find is filed as Stale — unverified in the Ledger, NOT pinned and NOT a posted deal; never report such a find as a pinned or posted find. A candidate with no reachable listing URL must be saved with listingUrl omitted — it stays an unverified sighting and never counts as a pinned deal. LIVENESS RULE (mandatory): NEVER save an ended, sold, or out-of-stock listing as a find — open the listing page and confirm it is currently live and for sale before saving a FIND. Market Terminal census listings follow the looser Terminal bar: they post even when the server re-check is bot-blocked, labelled unverified, and leave only on positive ended evidence. PASSED ITEMS RULE (mandatory): never re-suggest, re-add, re-price or resurrect any watchlist item or deal find marked Passed / hidden, and never suggest a new item that is the same card / theme as a passed one. PICCLICK RULE (mandatory): PicClick is NOT SERVED — never save, pin, cite, or follow any URL on a picclick domain; discard PicClick candidates at capture and use the direct marketplace listing instead, or skip the candidate. OWNER-ENDED RULE (mandatory): listings the owner reported ended, or marked Closed / Ended from the dashboard, are terminal — the server refuses their URLs permanently; never re-save, re-pin or resurrect them. LINEAGE: for every cert on the lineage watch, record genuinely new public appearances via saveLineageEvent with a real link and source label; never invent an appearance, owner, or price. Call saveRefreshFindings with sourced prices, dates and sources. Never invent a price.";
+      // ——— Forecast Engine (fc-v1): grade matured live forecasts,
+      // seed the one-time backtest, issue fresh ranges — inside this
+      // daily refresh, so no cron changes are needed. Runs BEFORE the
+      // research dispatch so it grades/issues on evidence on file; a
+      // failure here is reported in the log, never swallowed. ———
+      try {
+        summary += await runForecastEngine(ctx);
+      } catch (e) {
+        summary += ` Forecast engine pass FAILED (${e instanceof Error ? e.message.slice(0, 120) : "unknown error"}) — no forecasts were graded or issued by this run; official and kept values unchanged.`;
+      }
+
+      const refreshPrompt = "Research current market prices for this Pokemon graded-card portfolio using public web sources (PriceCharting, eBay sold, PSA, CardTrack). First call getPortfolio and work from its data: priority is unpriced cards, unverified estimates, and a rotating spot-check of priced cards; SLICE + DEPTH PROTOCOL: work a rotating slice of roughly 8–14 owned cards per run (unpriced and unverified-estimate cards first, then rotating spot-checks) — do not attempt the whole collection in one run. For EACH card you check, research its completed sales across the trailing 180 days and file EVERY distinct verified sold comp you can source (cap ~10 per card per run), not just the latest one — forecast eligibility needs at least 3 verified sold comps in the trailing 180 days with the latest no more than 90 days old, and one-comp-per-run filing leaves almost every card below that bar. Before researching, read the evidence already on file (getPortfolio sales evidence, or the inspectSalesEvidence diagnostics) and work the slice in this order: (1) cards with exactly 2 verified comps on file in the window — one more sourced sale makes them forecast-eligible; (2) cards with exactly 1; (3) cards whose latest verified comp is oldest; (4) the rest of the slice. VERIFIED means an actual completed sale at eBay sold, Fanatics Collect, or a major auction house (Heritage, Goldin, PWCC) with a readable CLEAN price. A clean displayed price means it sold at that price; a STRUCK-THROUGH price on a sold listing means a lower best offer was accepted and the true price is hidden — file struck-through sales ONLY as flagged hidden-price context (the description must state the true price is hidden and unknown), NEVER as a clean comp, and never let one set a checked price. FILING FORMAT (mandatory — the forecast-comp classifier reads your labels literally): each sale is its own saveRefreshFindings update; the source label names the PRIMARY VENUE ONLY (eBay sold / Fanatics Collect / Goldin / Heritage Auctions / PWCC / Mercari JP sold / Yahoo Japan sold); the description carries the sale facts only (card + grade, seller, end date, price basis including buyer's premium where applicable, cert number when printed, and the verbatim sold-listing or result URL). NEVER name an aggregator index (PriceCharting, CardTrack, PSA value estimates, Sports Card Investor, pokeprices) anywhere in a verified filing's source or description — any filing that mentions one is classified as aggregator context and the sale is lost as a comp. If a sale is visible only through an aggregator's table and the underlying marketplace sale cannot be identified, file it as aggregator-labelled context instead (source: Aggregator value with the index named), never as a verified comp. ORDER WITHIN A CARD: file a card's updates oldest sale first — the LAST update filed for a card sets its checked price, so a card's batch ends with its most recent REPRESENTATIVE clean verified sale. File any aggregator context for a card BEFORE its verified sales. A flagged single-print outlier (far outside the card's own cluster) is filed in date order with the flag in its description, EXCEPT when it is the newest sale: then file it just before the most recent representative clean sale and say so in your saveRefreshFindings summary, so the official value rests on the cluster, never on one print. Owner-kept cards stay context-only exactly as the policy below states — their verified sales are still filed for depth as sold comps for the card, and they never move the kept values. The forecast engine grades and issues automatically inside refreshPrices from the evidence on file — your depth filings are what it eats; you take no forecast action yourself. also re-check the acquisition watchlist prices and confirm the do-not-buy list is still at the top of its market. OFFICIAL VALUE POLICY: the portfolio's official number is COMP-BASED — for every card EXCEPT owner-kept locked values (the OWNER_KEPT_CERTS set in the server code), the checked price you report via saveRefreshFindings BECOMES that card's official value and moves the headline total, so report the price the verified comps actually support (Fanatics Collect / eBay sold primary; aggregator values labelled and never a sole source where sold comps exist). Do NOT override owner-kept values — report sales context only for those cards. SOURCE RULES (mandatory): label every figure with its source type — verified sold comp (Fanatics Collect, eBay sold), aggregator value (PriceCharting, PSA estimates, CardTrack), active listing / ask (Collektr, CardCodex, eBay listing pages), cert verification (PSA cert pages — never a price), or seller-reported / unverified. pokeprices.io is USE WITH CAUTION — never use it unlabeled or as a sole comp source. pokeinvesting.com is values / population ONLY (it lists no individual sales) — never cite it as a comp. Aggregator or single-source prints NEVER override verified sold comps or owner-kept values. For thin eras (e.g. Diamond & Pearl), only trust multiple confirmed PAID sales — flag any single-print spike as suspected manipulation, never as a price. SCOUT DUTY: also sweep live listings for watchlist targets and owned cards (eBay graded slabs, TCGplayer raw, Yahoo Japan / Mercari / eBay JP Japanese listings, sealed at MSRP). TERMINAL CENSUS: for every live listing you open for a tracked card (owned or watchlist) at ANY price, call saveMarketListing with its subjectKey (owned-<cert> / watch-<id> from getPortfolio's terminal data), the verbatim listing URL, asking price, market value, marketplace, seller and ships-from when shown. Save each under-market candidate (at least 15 percent under verified comp, or 8-15 percent for Tier 2) via saveScoutFind with marketplace, seller if shown, asking price, verified comp, date and scoutId. HARD LINK RULE: a find only PINS to the deal feed when saveScoutFind receives the real, reachable listing URL copied verbatim from the listing page — never construct, shorten or guess a listing URL. POSTING RULE: the server re-checks the listing at save time — if its checker cannot positively verify the listing live (bot-blocked), saveScoutFind returns pinned=false and the find is filed as Stale — unverified in the Ledger, NOT pinned and NOT a posted deal; never report such a find as a pinned or posted find. A candidate with no reachable listing URL must be saved with listingUrl omitted — it stays an unverified sighting and never counts as a pinned deal. LIVENESS RULE (mandatory): NEVER save an ended, sold, or out-of-stock listing as a find — open the listing page and confirm it is currently live and for sale before saving a FIND. Market Terminal census listings follow the looser Terminal bar: they post even when the server re-check is bot-blocked, labelled unverified, and leave only on positive ended evidence. PASSED ITEMS RULE (mandatory): never re-suggest, re-add, re-price or resurrect any watchlist item or deal find marked Passed / hidden, and never suggest a new item that is the same card / theme as a passed one. PICCLICK RULE (mandatory): PicClick is NOT SERVED — never save, pin, cite, or follow any URL on a picclick domain; discard PicClick candidates at capture and use the direct marketplace listing instead, or skip the candidate. OWNER-ENDED RULE (mandatory): listings the owner reported ended, or marked Closed / Ended from the dashboard, are terminal — the server refuses their URLs permanently; never re-save, re-pin or resurrect them. LINEAGE: for every cert on the lineage watch, record genuinely new public appearances via saveLineageEvent with a real link and source label; never invent an appearance, owner, or price. Call saveRefreshFindings with sourced prices, dates and sources. Never invent a price.";
 
       // Dispatch with the CORRECT agent API: spawnTask(message string,
       // { expectsAction, dedupeKey }). The previous code called
@@ -2948,16 +3387,28 @@ export const Actions = {
 
   saveRefreshFindings: defineAction({
     request: z.object({ summary: z.string(), updates: z.array(z.object({ cert: z.string(), checkedUsd: z.number(), source: z.string(), saleDate: z.string(), description: z.string() })).default([]) }),
-    response: z.object({ ok: z.literal(true), updated: z.number() }),
-    async handler(ctx, args): Promise<{ ok: true; updated: number }> {
+    response: z.object({ ok: z.literal(true), updated: z.number(), skippedEvidence: z.number() }),
+    async handler(ctx, args): Promise<{ ok: true; updated: number; skippedEvidence: number }> {
       const db = ctx.db<typeof schema>();
       let updated = 0;
+      let skippedEvidence = 0;
+      // Evidence valve (Remedies pass 1, item 1a): a filing whose
+      // signature (cert + price + sale date + source family) is
+      // already on file is SKIPPED, not duplicated — the daily
+      // refresh re-reporting a card's latest comp must not mint a
+      // new evidence row for the same underlying sale every day.
+      // The card's checked price still updates (revaluation is
+      // unaffected); only the evidence insert is gated.
+      const sigs = await evidenceSigSet(db);
       const rows = await db.select().from(schema.cards);
       for (const u of args.updates) {
+        const sig = evidenceSigKey(u.cert, u.checkedUsd, u.saleDate, u.source);
         if (OWNER_KEPT_CERTS.has(u.cert)) {
           // The two owner-kept values stay LOCKED (the owner's Oct 10,
           // 2026 policy): refresh comps are recorded as sales-evidence
           // context only and never float the kept official value.
+          if (sigs.has(sig)) { skippedEvidence++; continue; }
+          sigs.add(sig);
           await db.insert(schema.salesEvidence).values({ cardCert: u.cert, saleDate: u.saleDate, price: u.checkedUsd, source: u.source, description: u.description + " (context only — owner value kept)" });
           continue;
         }
@@ -2970,7 +3421,10 @@ export const Actions = {
         // total in the same write. Sales evidence is booked alongside
         // so every official traces to the comps behind it.
         await db.update(schema.cards).set({ checkedUsd: u.checkedUsd, lastChecked: u.saleDate }).where(eqId(row.id));
-        await db.insert(schema.salesEvidence).values({ cardCert: u.cert, saleDate: u.saleDate, price: u.checkedUsd, source: u.source, description: u.description });
+        if (sigs.has(sig)) { skippedEvidence++; } else {
+          sigs.add(sig);
+          await db.insert(schema.salesEvidence).values({ cardCert: u.cert, saleDate: u.saleDate, price: u.checkedUsd, source: u.source, description: u.description });
+        }
         updated++;
       }
       // Revalue today's portfolio snapshot from the NEW comp-based
@@ -2994,9 +3448,296 @@ export const Actions = {
           }
         } catch { /* snapshot upsert is best-effort alongside the findings write */ }
       }
-      await db.insert(schema.refreshLogs).values({ summary: args.summary, cardsChecked: args.updates.length });
+      await db.insert(schema.refreshLogs).values({ summary: `${args.summary} Evidence valve: skipped ${skippedEvidence} already-on-file evidence row${skippedEvidence === 1 ? "" : "s"} (same cert + price + date + source family — not re-filed).`, cardsChecked: args.updates.length });
       ctx.invalidateQueries();
-      return { ok: true as const, updated };
+      return { ok: true as const, updated, skippedEvidence };
+    },
+  }),
+
+  inspectSalesEvidence: defineAction({
+    request: z.object({ certs: z.array(z.string()).optional(), ids: z.array(z.number()).optional(), simulateBacktest: z.boolean().optional() }),
+    response: inspectSalesEvidenceResponse,
+    async handler(ctx, args): Promise<z.infer<typeof inspectSalesEvidenceResponse>> {
+      const db = ctx.db<typeof schema>();
+      const today = new Date().toISOString().slice(0, 10);
+      const allRows = await db.select().from(schema.salesEvidence);
+      const sortedRows = [...(allRows as any[])].sort((a, b) => (a.id as number) - (b.id as number));
+      const toPlain = (r: any): ForecastSale => ({ cardCert: r.cardCert as string, saleDate: r.saleDate as string, price: r.price as number, source: r.source as string, description: (r.description as string) ?? "", verified: r.verified !== 0 });
+      const certFilter = args.certs ? new Set(args.certs) : null;
+      const rows = sortedRows.filter((r) => !certFilter || certFilter.has(r.cardCert as string)).map((r) => {
+        const desc = (r.description as string) ?? "";
+        return { id: r.id as number, cardCert: r.cardCert as string, saleDate: r.saleDate as string, price: r.price as number, source: r.source as string, verified: r.verified !== 0, descLength: desc.length, hasUrl: desc.includes("http"), isComp: isForecastComp(toPlain(r)) };
+      });
+      const idSet = args.ids ? new Set(args.ids) : null;
+      const fullRows = idSet ? sortedRows.filter((r) => idSet.has(r.id as number)).map((r) => {
+        const desc = (r.description as string) ?? "";
+        return { id: r.id as number, cardCert: r.cardCert as string, saleDate: r.saleDate as string, price: r.price as number, source: r.source as string, verified: r.verified !== 0, description: desc, isComp: isForecastComp(toPlain(r)) };
+      }) : [];
+      const cardRows = await db.select().from(schema.cards);
+      const active = (cardRows as any[]).filter((r) => r.status === "active");
+      const compsByCertFull = new Map<string, { id: number; date: string; price: number }[]>();
+      for (const r of sortedRows) {
+        if (!isForecastComp(toPlain(r))) continue;
+        const arr = compsByCertFull.get(r.cardCert as string) ?? [];
+        arr.push({ id: r.id as number, date: r.saleDate as string, price: r.price as number });
+        compsByCertFull.set(r.cardCert as string, arr);
+      }
+      const certList: string[] = args.certs ? [...args.certs] : active.map((c) => c.cert as string);
+      const perCert = certList.map((cert) => {
+        const entries = compsByCertFull.get(cert) ?? [];
+        const sortedEntries = [...entries].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+        const compIds = entries.map((e) => e.id).sort((a, b) => a - b);
+        const comps = sortedEntries.map((e) => ({ date: e.date, price: e.price }));
+        const computed = fcCompute(comps, today);
+        let basisN: number;
+        if (computed) {
+          basisN = computed[0]?.basisN ?? comps.length;
+        } else {
+          const winStart = fcAddDays(today, -180);
+          basisN = comps.filter((c) => c.date <= today && c.date > winStart).length;
+        }
+        const latestCompDate = entries.length ? ([...entries.map((e) => e.date)].sort().slice(-1)[0] ?? null) : null;
+        return { cert, compIds, basisN, eligible: computed != null, confidence: computed ? (computed[0]?.confidence ?? null) : null, liquidity: computed ? (computed[0]?.liquidity ?? null) : null, latestCompDate };
+      });
+      let backtestSimulation: z.infer<typeof inspectBacktestOut> | null = null;
+      if (args.simulateBacktest) {
+        const compsByCert = new Map<string, { date: string; price: number }[]>();
+        for (const r of sortedRows) {
+          const plain = toPlain(r);
+          if (!isForecastComp(plain)) continue;
+          const arr = compsByCert.get(plain.cardCert) ?? [];
+          arr.push({ date: plain.saleDate, price: plain.price });
+          compsByCert.set(plain.cardCert, arr);
+        }
+        for (const arr of compsByCert.values()) arr.sort((a, b) => a.date.localeCompare(b.date));
+        let seededForecasts = 0;
+        let inRangeCount = 0;
+        const btPerCert: { cert: string; seeded: number; inRange: number }[] = [];
+        for (const c of active) {
+          const cert = c.cert as string;
+          const comps = compsByCert.get(cert) ?? [];
+          if (comps.length < 6) continue;
+          let seeded = 0;
+          let inRange = 0;
+          const dates = [...new Set(comps.map((x) => x.date))].sort();
+          for (let j = 1; j < dates.length; j++) {
+            const issuedAt = dates[j - 1]!;
+            const computed = fcCompute(comps.filter((x) => x.date < dates[j]!), issuedAt);
+            if (!computed) continue;
+            for (const f of computed) {
+              const horizonDate = fcAddDays(issuedAt, f.horizonDays);
+              const realized = comps.find((x) => x.date >= horizonDate);
+              if (!realized) continue;
+              seeded++;
+              if (realized.price >= f.rangeLow && realized.price <= f.rangeHigh) inRange++;
+            }
+          }
+          btPerCert.push({ cert, seeded, inRange });
+          seededForecasts += seeded;
+          inRangeCount += inRange;
+        }
+        const gradedForecasts = seededForecasts;
+        const inRangePct = gradedForecasts ? Math.round((inRangeCount / gradedForecasts) * 1000) / 10 : null;
+        backtestSimulation = { seededForecasts, gradedForecasts, inRangeCount, inRangePct, perCert: btPerCert };
+      }
+      return { ok: true as const, rows, fullRows, perCert, backtestSimulation };
+    },
+  }),
+
+
+  dedupeSalesEvidence: defineAction({
+    request: z.object({ dryRun: z.boolean(), groups: z.array(z.object({ keepId: z.number(), deleteIds: z.array(z.number()).min(1).max(30) })).min(1).max(25), allowAggregatorGroups: z.boolean().optional() }),
+    response: dedupeSalesEvidenceResponse,
+    async handler(ctx, args): Promise<z.infer<typeof dedupeSalesEvidenceResponse>> {
+      const db = ctx.db<typeof schema>();
+      const allRows = await db.select().from(schema.salesEvidence);
+      const salesBefore = allRows.length;
+      const byId = new Map<number, any>();
+      for (const r of allRows as any[]) byId.set(r.id as number, r);
+      // Verification — ALL groups BEFORE deleting anything.
+      const seen = new Map<number, number>();
+      for (let gi = 0; gi < args.groups.length; gi++) {
+        const g = args.groups[gi]!;
+        const idsInGroup = [g.keepId, ...g.deleteIds];
+        for (const id of idsInGroup) {
+          if (seen.has(id)) {
+            return { ok: false, error: `Row id ${id} appears in more than one group or in both keepId and deleteIds (first seen in group ${seen.get(id)}, again in group ${gi}).`, groupIndex: gi };
+          }
+          seen.set(id, gi);
+        }
+      }
+      for (let gi = 0; gi < args.groups.length; gi++) {
+        const g = args.groups[gi]!;
+        for (const id of [g.keepId, ...g.deleteIds]) {
+          if (!byId.has(id)) {
+            return { ok: false, error: `Row id ${id} does not exist in sales_evidence.`, groupIndex: gi };
+          }
+        }
+      }
+      for (let gi = 0; gi < args.groups.length; gi++) {
+        const g = args.groups[gi]!;
+        const keeper = byId.get(g.keepId);
+        for (const deleteId of g.deleteIds) {
+          const row = byId.get(deleteId);
+          if (row.cardCert !== keeper.cardCert || row.price !== keeper.price || row.saleDate !== keeper.saleDate || row.verified !== keeper.verified) {
+            return { ok: false, error: `Row id ${deleteId} does not share the identical duplicate signature (cardCert, price, saleDate, verified) with keeper id ${g.keepId}.`, groupIndex: gi };
+          }
+        }
+      }
+      const protectedNeedles = ["owner-kept", "aggregator", "estimate", "market context", "market asks", "seller-reported", "no new verified source", "sports card investor", "cardtrack", "private sale"];
+      /* Aggregator-class opt-in (Remedies pass 1, item 1c — the owner
+         reserved these groups in the first dedupe): when allowAggregatorGroups is
+         set, the aggregator-class needles ("aggregator", "sports
+         card investor", "cardtrack") are waived for a group ONLY
+         when EVERY row in it is aggregator-sourced (aggregator /
+         PriceCharting / CardTrack / Sports Card Investor language in
+         source or description) AND no row carries kept-value
+         language. Every other protected class (owner-kept, estimate,
+         market context, market asks, seller-reported, private sale,
+         "no new verified source") stays refused even under the
+         opt-in. */
+      const aggregatorWaivable = ["aggregator", "sports card investor", "cardtrack"];
+      const keptLanguageNeedles = ["owner-kept", "owner kept", "owner-confirmed", "owner value kept", "kept value", "not overridden"];
+      const rowText = (row: any): string => `${(row.source as string) ?? ""} ${((row.description as string) ?? "")}`.toLowerCase();
+      const isAggregatorClass = (row: any): boolean => ["aggregator", "pricecharting", "cardtrack", "sports card investor"].some((n) => rowText(row).includes(n));
+      const groupAggregatorOk = (g: { keepId: number; deleteIds: number[] }): boolean => {
+        if (!args.allowAggregatorGroups) return false;
+        const rowsInGroup = [g.keepId, ...g.deleteIds].map((id) => byId.get(id));
+        if (rowsInGroup.some((r) => !r)) return false;
+        if (!rowsInGroup.every(isAggregatorClass)) return false;
+        return rowsInGroup.every((row) => !keptLanguageNeedles.some((n) => rowText(row).includes(n)));
+      };
+      for (let gi = 0; gi < args.groups.length; gi++) {
+        const g = args.groups[gi]!;
+        const waived = groupAggregatorOk(g);
+        for (const id of [g.keepId, ...g.deleteIds]) {
+          const row = byId.get(id);
+          const src = ((row.source as string) ?? "").toLowerCase();
+          const hit = protectedNeedles.find((n) => src.includes(n) && !(waived && aggregatorWaivable.includes(n)));
+          if (hit) {
+            return { ok: false, error: `Row id ${id} is in a protected class (source contains "${hit}") and is never deleted by this action.`, groupIndex: gi };
+          }
+        }
+      }
+      const cardRows = await db.select().from(schema.cards);
+      const cardByCert = new Map<string, any>();
+      for (const c of cardRows as any[]) cardByCert.set(c.cert as string, c);
+      for (let gi = 0; gi < args.groups.length; gi++) {
+        const g = args.groups[gi]!;
+        const keeper = byId.get(g.keepId);
+        if (OWNER_KEPT_CERTS.has(keeper.cardCert as string)) {
+          const card = cardByCert.get(keeper.cardCert as string);
+          if (card) {
+            const eff = effectiveOf(card);
+            if (eff != null && (keeper.price as number) === eff) {
+              return { ok: false, error: `Group for cert ${keeper.cardCert} is priced at the card's kept/official value ($${eff}) and is refused by the kept-value guard.`, groupIndex: gi };
+            }
+          }
+        }
+      }
+      if (args.dryRun) {
+        const groupsOut = args.groups.map((g) => {
+          const keeper = byId.get(g.keepId);
+          return { keepId: g.keepId, deleteIds: [...g.deleteIds], cert: keeper.cardCert as string, price: keeper.price as number, saleDate: keeper.saleDate as string };
+        });
+        const totalToDelete = args.groups.reduce((s, g) => s + g.deleteIds.length, 0);
+        return { ok: true, dryRun: true, salesBefore, groups: groupsOut, totalToDelete };
+      }
+      const deletedIds = args.groups.flatMap((g) => [...g.deleteIds]).sort((a, b) => a - b);
+      for (const id of deletedIds) {
+        await db.delete(schema.salesEvidence).where(eq(schema.salesEvidence.id, id));
+      }
+      const afterRows = await db.select().from(schema.salesEvidence);
+      const salesAfter = afterRows.length;
+      const summary = `Evidence dedupe (manual audit action): removed ${deletedIds.length} duplicate sales_evidence rows across ${args.groups.length} groups (kept one canonical row per group). Sales evidence rows before: ${salesBefore}, after: ${salesAfter}. Deleted ids: ${deletedIds.join(", ")}.${args.allowAggregatorGroups ? " Aggregator-class duplicate groups were deleted under the explicit opt-in (Remedies pass 1, item 1c): every row in those groups is aggregator-sourced and carries no kept-value language; all other protected classes stayed refused." : ""} No official, kept, or forecast values were changed by this action.`;
+      await db.insert(schema.refreshLogs).values({ summary, cardsChecked: 0 });
+      ctx.invalidateQueries();
+      return { ok: true, dryRun: false, deletedTotal: deletedIds.length, deletedIds, salesBefore, salesAfter };
+    },
+  }),
+
+
+  /* ——— Kept-value evidence exclusion (Remedies pass 1, Oct 13, 2026
+     — item 1b, generalized for this export) ———
+     Some sales_evidence rows record OWNER-KEPT values, not market
+     sales: a refresh may re-file a kept figure as context, and if
+     such a filing carries verified=1 it passes the forecast
+     classifier (isForecastComp) and feeds the Pump Detector's
+     verified set. This action excludes them WITHOUT deleting
+     history: each listed row is re-verified at write time — its cert
+     must be in OWNER_KEPT_CERTS, its price must equal that cert's
+     current kept (official) value, and source or description must
+     carry kept-value language — then verified is set to 0 (the same
+     exclusion flag the classifier, pump detector, verified averages
+     and chart series already honor) and the source label is
+     normalized to the "Owner-kept value — context only (not a market
+     comp)" prefix, preserving the original label after it. ANY
+     mismatch refuses the whole call atomically — nothing is written.
+     Finally, open live forecasts for the affected certs are marked
+     SUPERSEDED: they were computed with these rows in their basis,
+     and a superseded forecast counts as neither a hit nor a miss;
+     the next refresh re-issues on the corrected basis (item 1d).
+     In this demo export OWNER_KEPT_CERTS is empty, so the action
+     refuses every id — it ships so the tool exists the moment a
+     deployment locks a value. */
+  excludeKeptValueEvidence: defineAction({
+    request: z.object({ ids: z.array(z.number()).min(1).max(40) }),
+    response: excludeKeptValueResponse,
+    async handler(ctx, args): Promise<z.infer<typeof excludeKeptValueResponse>> {
+      const KEPT_NEEDLES = ["owner-kept", "owner kept", "owner-confirmed", "owner value kept", "kept value", "not overridden"];
+      const PREFIX = "Owner-kept value — context only (not a market comp)";
+      const db = ctx.db<typeof schema>();
+      const cardRows = await db.select().from(schema.cards);
+      const KEPT_BY_CERT: Record<string, number> = {};
+      for (const cert of OWNER_KEPT_CERTS) {
+        const card = (cardRows as any[]).find((r: any) => r.cert === cert);
+        const eff = card ? effectiveOf(card) : null;
+        if (eff != null) KEPT_BY_CERT[cert] = eff;
+      }
+      const allRows = await db.select().from(schema.salesEvidence);
+      const byId = new Map<number, any>();
+      for (const r of allRows as any[]) byId.set(r.id as number, r);
+      // Signature re-check — EVERY row, before writing anything.
+      const failedIds: number[] = [];
+      const targets: any[] = [];
+      for (const id of args.ids) {
+        const r = byId.get(id);
+        if (!r) { failedIds.push(id); continue; }
+        const kept = KEPT_BY_CERT[r.cardCert as string];
+        const text = `${(r.source as string) ?? ""} ${((r.description as string) ?? "")}`.toLowerCase();
+        if (kept == null || (r.price as number) !== kept || !KEPT_NEEDLES.some((n) => text.includes(n))) { failedIds.push(id); continue; }
+        targets.push(r);
+      }
+      if (failedIds.length > 0) {
+        return { ok: false, error: `Signature re-check failed for ${failedIds.length} row(s) — nothing was changed. Each row must sit on an owner-kept cert, be priced exactly at that cert's kept value, and carry kept-value language in its source or description.`, failedIds };
+      }
+      const affectedCerts = new Set<string>();
+      for (const r of targets) {
+        const oldSource = (r.source as string) ?? "";
+        let newSource = oldSource;
+        if (!oldSource.startsWith(PREFIX)) {
+          newSource = oldSource.startsWith("Owner-kept value — context only")
+            ? PREFIX + oldSource.slice("Owner-kept value — context only".length)
+            : `${PREFIX} — ${oldSource}`;
+        }
+        await db.update(schema.salesEvidence).set({ verified: 0, source: newSource }).where(eq(schema.salesEvidence.id, r.id));
+        affectedCerts.add(r.cardCert as string);
+      }
+      let supersededForecasts = 0;
+      try {
+        const fcRows = await db.select().from(schema.cardForecasts);
+        for (const f of fcRows as any[]) {
+          if (f.origin === "live" && f.status === "open" && affectedCerts.has(f.cert as string)) {
+            await db.update(schema.cardForecasts).set({ status: "superseded" }).where(eq(schema.cardForecasts.id, f.id));
+            supersededForecasts++;
+          }
+        }
+      } catch { /* forecasts table just migrated */ }
+      const afterRows = await db.select().from(schema.salesEvidence);
+      const summary = `Kept-value evidence exclusion (Remedies pass 1, Oct 13, 2026 — manual audit action): ${targets.length} sales_evidence rows recording owner-kept values were marked verified=false and their source labels normalized to the "${PREFIX}" prefix, so they no longer enter the forecast classifier, the Pump Detector's verified set, verified averages, or chart series. Rows and narrative text preserved — nothing deleted. ${supersededForecasts} open live forecast(s) computed on the old basis were marked superseded (counted as neither hits nor misses); the next refresh re-issues on the corrected basis. Excluded ids: ${targets.map((r: any) => r.id as number).join(", ")}.`;
+      await db.insert(schema.refreshLogs).values({ summary, cardsChecked: 0 });
+      ctx.invalidateQueries();
+      return { ok: true, updated: targets.length, supersededForecasts, salesTotal: afterRows.length };
     },
   }),
 } satisfies ActionsModule;
